@@ -1,24 +1,24 @@
 <template>
-  <el-cascader style="width: 100%;"
-               :options="options"
-               change-on-select
-               :show-all-levels="false"
-               :props="defaultProps"
-               @change="valueChange"
-               v-model="dataValue"
-               :disabled="disabled">
-  </el-cascader>
+  <el-cascader
+    ref="elCascader"
+    :options="options"
+    :show-all-levels="false"
+    :props="defaultProps"
+    v-model="dataValue"
+    :disabled="disabled"
+    style="width: 100%;"
+    change-on-select
+    @change="valueChange"/>
 </template>
 <script type="text/javascript">
 import arrayMixin from './arrayMixin'
 import { productCategoryIndex } from '@/api/systemManagement/SystemCustomer'
 
 export default {
-  name: 'xh-produc-cate', // 新建 产品分类
+  name: 'XhProducCate', // 新建 产品分类
   components: {},
   mixins: [arrayMixin],
-  computed: {},
-  watch: {},
+  props: {},
   data() {
     return {
       options: [],
@@ -29,7 +29,8 @@ export default {
       }
     }
   },
-  props: {},
+  computed: {},
+  watch: {},
   mounted() {
     this.getProductCategoryIndex()
   },
@@ -43,6 +44,15 @@ export default {
           this.options = res.data
         })
         .catch(() => {})
+    },
+
+    valueChange(val) {
+      this.$emit('value-change', {
+        index: this.index,
+        item: this.item,
+        value: val,
+        valueContent: this.$refs.elCascader.currentLabels.join(',')
+      })
     }
   }
 }

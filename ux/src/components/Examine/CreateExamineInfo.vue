@@ -1,39 +1,46 @@
 <template>
   <div>
-    <el-form ref="form"
-             v-if="examineInfo.config == 0"
-             :model="form"
-             :rules="rules"
-             label-position="top"
-             class="crm-create-box">
-      <el-form-item prop="name"
-                    class='crm-create-item'>
-        <div slot="label"
-             style="display: inline-block;">
+    <el-form
+      v-if="examineInfo.config == 0"
+      ref="form"
+      :model="form"
+      :rules="rules"
+      label-position="top"
+      class="crm-create-box">
+      <el-form-item
+        prop="name"
+        class="crm-create-item">
+        <div
+          slot="label"
+          style="display: inline-block;">
           <div style="margin:5px 0;font-size:12px;word-wrap:break-word;word-break:break-all;">
             审核人
-            <span style="color:#999;">
-            </span>
+            <span style="color:#999;"/>
           </div>
         </div>
-        <xh-user-cell :infoType="types"
-                      @value-change="fieldValueChange"></xh-user-cell>
+        <xh-user-cell
+          :info-type="types"
+          :value="draftUser ? [draftUser] : []"
+          @value-change="fieldValueChange"/>
       </el-form-item>
     </el-form>
-    <flexbox v-else-if="examineInfo.config == 1"
-             class="fixed-examine"
-             wrap="wrap">
-      <el-popover v-for="(item, index) in examineInfo.stepList"
-                  :key="index"
-                  placement="bottom"
-                  :disabled="item.user_id_info.length==0"
-                  trigger="hover"
-                  :content="item.user_id_info|contentFilters">
-        <div slot="reference"
-             class="fixed-examine-item">
-          <img src="@/assets/img/examine_head.png" />
-          <div class="detail">{{item|detail}}</div>
-          <div class="step">{{(index+1)|step}}</div>
+    <flexbox
+      v-else-if="examineInfo.config == 1"
+      class="fixed-examine"
+      wrap="wrap">
+      <el-popover
+        v-for="(item, index) in examineInfo.stepList"
+        :key="index"
+        :disabled="item.user_id_info.length==0"
+        :content="item.user_id_info|contentFilters"
+        placement="bottom"
+        trigger="hover">
+        <div
+          slot="reference"
+          class="fixed-examine-item">
+          <img src="@/assets/img/examine_head.png" >
+          <div class="detail">{{ item|detail }}</div>
+          <div class="step">{{ (index+1)|step }}</div>
         </div>
       </el-popover>
     </flexbox>
@@ -46,11 +53,10 @@ import { XhUserCell } from '@/components/CreateCom'
 import Nzhcn from 'nzh/cn'
 
 export default {
-  name: 'create-examine-info',
+  name: 'CreateExamineInfo',
   components: {
     XhUserCell
   },
-  computed: {},
   filters: {
     detail: function(data) {
       if (data.status == 2) {
@@ -79,18 +85,6 @@ export default {
       return content
     }
   },
-  data() {
-    return {
-      form: {
-        name: ''
-      },
-      rules: {
-        name: [{ required: true, message: '审批人不能为空', trigger: 'blur' }]
-      },
-      // 审核信息 config 1 固定 0 自选
-      examineInfo: {}
-    }
-  },
   props: {
     // CRM类型
     types: {
@@ -103,6 +97,20 @@ export default {
       default: ''
     }
   },
+  data() {
+    return {
+      form: {
+        name: ''
+      },
+      rules: {
+        name: [{ required: true, message: '审批人不能为空', trigger: 'blur' }]
+      },
+      // 审核信息 config 1 固定 0 自选
+      examineInfo: {},
+      draftUser: null
+    }
+  },
+  computed: {},
   mounted() {
     this.getDetail()
   },
@@ -115,10 +123,26 @@ export default {
       })
         .then(res => {
           this.examineInfo = res.data
-          this.$emit('value-change', {
-            config: res.data.config, // 审批类型
-            value: [] // 审批信息
-          })
+          if (
+            res.data.config == 0 &&
+            res.data.stepList.length &&
+            res.data.stepList[0].type == '5'
+          ) {
+            const item = res.data.stepList[0]
+            this.draftUser = item.userInfo
+            this.form.name = item.userInfo.id
+            this.$emit('value-change', {
+              config: res.data.config, // 审批类型
+              value: [item.userInfo] // 审批信息
+            })
+          } else {
+            this.form.name = ''
+            this.draftUser = null
+            this.$emit('value-change', {
+              config: res.data.config, // 审批类型
+              value: [] // 审批信息
+            })
+          }
         })
         .catch(() => {})
     },
@@ -138,7 +162,13 @@ export default {
     },
     // 字段的值更新
     fieldValueChange(data) {
-      this.form.name = data
+      if (data.value.length) {
+        this.draftUser = data.value[0]
+        this.form.name = this.draftUser.id
+      } else {
+        this.draftUser = null
+        this.form.name = ''
+      }
       this.$emit('value-change', {
         config: this.examineInfo.config, // 审批类型
         value: data.value // 审批信息

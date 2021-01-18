@@ -2,13 +2,17 @@
   <div v-loading="loading">
     <div v-empty="list.length === 0">
       <div class="log-items">
-        <follow-record-cell v-for="(item, index) in list"
-                            :item="item"
-                            :crmType="crmType"
-                            :key="index"></follow-record-cell>
+        <follow-record-cell
+          v-for="(item, index) in list"
+          :item="item"
+          :crm-type="crmType"
+          :index="index"
+          :key="index"
+          @on-handle="cellHandle"/>
         <div class="load">
-          <el-button type="text"
-                     :loading="loadMoreLoading">{{loadMoreLoading ? '加载更多' : '没有更多了'}}</el-button>
+          <el-button
+            :loading="loadMoreLoading"
+            type="text">{{ loadMoreLoading ? '加载更多' : '没有更多了' }}</el-button>
         </div>
       </div>
     </div>
@@ -18,11 +22,10 @@
 <script>
 import FollowRecordCell from './components/FollowRecordCell' // 跟进记录
 import { crmRecordIndex } from '@/api/customermanagement/common'
-import { formatTimeToTimestamp } from '@/utils'
 
 export default {
   /** 线索管理 的 线索详情 的 跟进记录*/
-  name: 'record-log',
+  name: 'RecordLog',
   components: {
     FollowRecordCell
   },
@@ -35,11 +38,6 @@ export default {
       default: ''
     }
   },
-  watch: {
-    id: function(val) {
-      this.refreshList()
-    }
-  },
   data() {
     return {
       loading: false,
@@ -50,6 +48,11 @@ export default {
     }
   },
   computed: {},
+  watch: {
+    id: function(val) {
+      this.refreshList()
+    }
+  },
   mounted() {
     this.$bus.on('follow-log-refresh', data => {
       if (data.type == 'record-log') {
@@ -58,23 +61,17 @@ export default {
     })
 
     // 分批次加载
-    let self = this
-    let item = document.getElementById('follow-log-content')
-    item.onscroll = function() {
-      let scrollTop = item.scrollTop
-      let windowHeight = item.clientHeight
-      let scrollHeight = item.scrollHeight //滚动条到底部的条件
-
-      if (
-        scrollTop + windowHeight == scrollHeight &&
-        self.loadMoreLoading == true
-      ) {
-        if (!self.isPost) {
-          self.isPost = true
-          self.page++
-          self.getList()
+    const dom = document.getElementById('follow-log-content')
+    dom.onscroll = () => {
+      const scrollOff = dom.scrollTop + dom.clientHeight - dom.scrollHeight
+      // 滚动条到底部的条件
+      if (Math.abs(scrollOff) < 10 && this.loadMoreLoading == true) {
+        if (!this.isPost) {
+          this.isPost = true
+          this.page++
+          this.getList()
         } else {
-          self.loadMoreLoading = false
+          this.loadMoreLoading = false
         }
       }
     }
@@ -83,6 +80,10 @@ export default {
   },
   activated: function() {},
   deactivated: function() {},
+
+  beforeDestroy() {
+    this.$bus.off('follow-log-refresh')
+  },
   methods: {
     getList() {
       this.loading = true
@@ -112,11 +113,15 @@ export default {
       this.page = 1
       this.list = []
       this.getList()
+    },
+    /**
+     * 行布局删除
+     */
+    cellHandle(data) {
+      if (data.type == 'delete') {
+        this.list.splice(data.data.index, 1)
+      }
     }
-  },
-
-  beforeDestroy() {
-    this.$bus.off('follow-log-refresh')
   }
 }
 </script>

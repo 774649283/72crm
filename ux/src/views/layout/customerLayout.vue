@@ -1,38 +1,45 @@
 <template>
   <el-container>
     <el-header class="nav-container">
-      <navbar :navIndex="1"
-              @nav-items-click="navClick"></navbar>
+      <navbar
+        :nav-index="1"
+        @nav-items-click="navClick"/>
     </el-header>
     <el-container>
-      <el-aside width="auto"
-                class="aside-container">
-        <sidebar :items="crmRouters.children"
-                 :addOffset="quickAddOffset"
-                 createButtonTitle="快速创建"
-                 mainRouter="crm">
-          <div slot="add"
-               class="quick-add">
+      <el-aside
+        width="auto"
+        class="aside-container">
+        <sidebar
+          :items="crmRouters.children"
+          :add-offset="quickAddOffset"
+          create-button-title="快速创建"
+          main-router="crm">
+          <div
+            slot="add"
+            class="quick-add">
             <div class="quick-add-content">
-              <p v-for="(item, index) in quickAddList"
-                 :key="index"
-                 @click="addSkip(item)">
-                <i class="wukong"
-                   :class="'wukong-' + item.icon"></i>
-                <span>{{item.label}}</span>
+              <p
+                v-for="(item, index) in quickAddList"
+                :key="index"
+                @click="addSkip(item)">
+                <i
+                  :class="'wukong-' + item.icon"
+                  class="wukong"/>
+                <span>{{ item.label }}</span>
               </p>
             </div>
           </div>
         </sidebar>
       </el-aside>
-      <el-main id="crm-main-container"
-               style="padding:15px;">
-        <app-main></app-main>
+      <el-main id="crm-main-container">
+        <app-main/>
       </el-main>
     </el-container>
-    <c-r-m-create-view v-if="isCreate"
-                       :crm-type="createCRMType"
-                       @hiden-view="isCreate=false"></c-r-m-create-view>
+    <c-r-m-create-view
+      v-if="isCreate"
+      :crm-type="createCRMType"
+      @save-success="createSaveSuccess"
+      @hiden-view="isCreate=false"/>
   </el-container>
 </template>
 
@@ -48,6 +55,13 @@ export default {
     Sidebar,
     AppMain,
     CRMCreateView
+  },
+
+  data() {
+    return {
+      isCreate: false,
+      createCRMType: ''
+    }
   },
   computed: {
     ...mapGetters(['crm', 'crmRouters']),
@@ -110,13 +124,13 @@ export default {
       return Math.round(this.quickAddList.length / 2) * 25
     }
   },
-  data() {
-    return {
-      isCreate: false,
-      createCRMType: ''
-    }
+  created() {
+    this.getcrmMessagNum()
+    this.getcrmSettingConfig()
   },
+
   mounted() {},
+
   methods: {
     navClick(index) {},
     addSkip(item) {
@@ -128,6 +142,42 @@ export default {
       }
       this.createCRMType = type
       this.isCreate = true
+    },
+
+    /**
+     * 获取消息数
+     */
+    getcrmMessagNum() {
+      this.$store
+        .dispatch('GetMessageNum')
+        .then(res => {})
+        .catch(() => {})
+    },
+
+    /**
+     * 获取客户管理配置信息
+     */
+    getcrmSettingConfig() {
+      this.$store.dispatch('CRMSettingConfig')
+    },
+
+    /**
+     * 新建客户同时新建联系人
+     */
+    // 创建数据页面 保存成功
+    createSaveSuccess(data) {
+      if (data && data.saveAndCreate) {
+        if (data.type == 'customer') {
+          this.createCRMType = 'contacts'
+          this.createActionInfo = {
+            type: 'relative',
+            crmType: 'customer',
+            data: {}
+          }
+          this.createActionInfo.data['customer'] = data.data
+          this.isCreate = true
+        }
+      }
     }
   }
 }

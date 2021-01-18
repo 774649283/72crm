@@ -2,27 +2,30 @@
   <div v-loading="loading">
     <div v-empty="list.length === 0">
       <div class="log-items">
-        <follow-schedule-cell v-for="(item, index) in list"
-                              :key="index"
-                              :data="item.dataInfo"
-                              @on-handle="examineCellHandle"></follow-schedule-cell>
+        <follow-schedule-cell
+          v-for="(item, index) in list"
+          :key="index"
+          :data="item.dataInfo"
+          @on-handle="examineCellHandle"/>
         <div class="load">
-          <el-button type="text"
-                     :loading="loadMoreLoading">{{loadMoreLoading ? '加载更多' : '没有更多了'}}</el-button>
+          <el-button
+            :loading="loadMoreLoading"
+            type="text">{{ loadMoreLoading ? '加载更多' : '没有更多了' }}</el-button>
         </div>
       </div>
     </div>
-    <c-r-m-full-screen-detail :visible.sync="showFullDetail"
-                              :crmType="detailCRMType"
-                              :id="rowID"></c-r-m-full-screen-detail>
+    <c-r-m-full-screen-detail
+      :visible.sync="showFullDetail"
+      :crm-type="detailCRMType"
+      :id="rowID"/>
     <!-- 编辑日程 -->
-    <create-schedule v-if="showDialog"
-                     :text="newText"
-                     :formData="formData"
-                     :appendToBody="true"
-                     @onSubmit="onSubmit"
-                     @closeDialog="showDialog=false">
-    </create-schedule>
+    <create-schedule
+      v-if="showDialog"
+      :text="newText"
+      :form-data="formData"
+      :append-to-body="true"
+      @onSubmit="onSubmit"
+      @closeDialog="showDialog=false"/>
   </div>
 </template>
 
@@ -31,11 +34,11 @@ import { crmRecordIndex } from '@/api/customermanagement/common'
 import FollowScheduleCell from './components/FollowScheduleCell'
 import { scheduleDelete } from '@/api/oamanagement/schedule'
 import CreateSchedule from '@/views/OAManagement/schedule/components/createSchedule'
-import { formatTimeToTimestamp } from '@/utils'
+import { getDateFromTimestamp } from '@/utils'
 
 export default {
   /** 日程 跟进记录*/
-  name: 'schedule-log',
+  name: 'ScheduleLog',
   components: {
     FollowScheduleCell,
     CRMFullScreenDetail: () =>
@@ -49,11 +52,6 @@ export default {
     crmType: {
       type: String,
       default: ''
-    }
-  },
-  watch: {
-    id: function(val) {
-      this.refreshList()
     }
   },
   data() {
@@ -75,25 +73,24 @@ export default {
     }
   },
   computed: {},
+  watch: {
+    id: function(val) {
+      this.refreshList()
+    }
+  },
   mounted() {
     // 分批次加载
-    let self = this
-    let item = document.getElementById('follow-log-content')
-    item.onscroll = function() {
-      let scrollTop = item.scrollTop
-      let windowHeight = item.clientHeight
-      let scrollHeight = item.scrollHeight //滚动条到底部的条件
-
-      if (
-        scrollTop + windowHeight == scrollHeight &&
-        self.loadMoreLoading == true
-      ) {
-        if (!self.isPost) {
-          self.isPost = true
-          self.page++
-          self.getList()
+    const dom = document.getElementById('follow-log-content')
+    dom.onscroll = () => {
+      const scrollOff = dom.scrollTop + dom.clientHeight - dom.scrollHeight
+      // 滚动条到底部的条件
+      if (Math.abs(scrollOff) < 10 && this.loadMoreLoading == true) {
+        if (!this.isPost) {
+          this.isPost = true
+          this.page++
+          this.getList()
         } else {
-          self.loadMoreLoading = false
+          this.loadMoreLoading = false
         }
       }
     }
@@ -136,11 +133,11 @@ export default {
       // 编辑
       if (data.type == 'edit') {
         this.newText = '编辑日程'
-        let val = data.data.item
-        val.start_time = val.start_time * 1000
-        val.end_time = val.end_time * 1000
+        const val = data.data.item
+        val.start_time = getDateFromTimestamp(val.start_time)
+        val.end_time = getDateFromTimestamp(val.end_time)
         val.owner_user_ids = []
-        for (let k of val.ownerList) {
+        for (const k of val.ownerList) {
           val.owner_user_ids.push(k.owner_id)
         }
         this.formData = val

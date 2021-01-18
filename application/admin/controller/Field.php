@@ -10,6 +10,7 @@ namespace app\admin\controller;
 use think\Hook;
 use think\Request;
 use think\Db;
+use app\admin\model\User as UserModel;
 
 class Field extends ApiCommon
 {
@@ -23,29 +24,26 @@ class Field extends ApiCommon
     {
         $action = [
             'permission'=>[''],
-            'allow'=>['index','getfield','update','read','config','validates','configindex','columnwidth']
+            'allow'=>['index','getfield','update','read','config','validates','configindex','columnwidth','uniquefield']
         ];
         Hook::listen('check_auth',$action);
         $request = Request::instance();
         $a = strtolower($request->action());        
         if (!in_array($a, $action['permission'])) {
             parent::_initialize();
-        }
-        $userInfo = $this->userInfo;
-        //权限判断
-        $unAction = ['getfield','read','config','validates','configindex','columnwidth'];
-        $adminTypes = adminGroupTypes($userInfo['id']);
-        if (!in_array(6,$adminTypes) && !in_array(1,$adminTypes) && !in_array($a, $unAction)) {
-            header('Content-Type:application/json; charset=utf-8');
-            exit(json_encode(['code'=>102,'error'=>'无权操作']));
-        }         
+        }        
     }
     
     /**
      * 自定义字段列表
      */
     public function index()
-    {       
+    {  
+        //权限判断
+        if (!checkPerByAction('admin', 'crm', 'field')) {
+            header('Content-Type:application/json; charset=utf-8');
+            exit(json_encode(['code'=>102,'error'=>'无权操作']));
+        }         
         $param = $this->param;
         $types_arr = [
             '0' => ['types' => 'crm_leads','name' => '线索管理'],
@@ -88,6 +86,11 @@ class Field extends ApiCommon
      */
     public function update()
     {
+        //权限判断
+        if (!checkPerByAction('admin', 'crm', 'field')) {
+            header('Content-Type:application/json; charset=utf-8');
+            exit(json_encode(['code'=>102,'error'=>'无权操作']));
+        }        
         $fieldModel = model('Field');
         $param = $this->param;
         $types = $data['types'] = $param['types'];
@@ -323,9 +326,12 @@ class Field extends ApiCommon
         $userInfo = $this->userInfo;
         $userFieldModel = model('UserField');
         $width = $param['width'] > 10 ? $param['width'] : '';
-        $res = $userFieldModel->setColumnWidth($param['types'], $param['field'], $width, $userInfo['id']);
-        if (!$res) {
-            return resultArray(['error' => $userFieldModel->getError()]);
+        $unField = array('pool_day');
+        if (!in_array($param['field'],$unField)) {
+            $res = $userFieldModel->setColumnWidth($param['types'], $param['field'], $width, $userInfo['id']);
+            if (!$res) {
+                return resultArray(['error' => $userFieldModel->getError()]);
+            }            
         }
         return resultArray(['data' => '设置成功']);
     }
@@ -345,5 +351,25 @@ class Field extends ApiCommon
             return resultArray(['error' => $userFieldModel->getError()]);
         }
         return resultArray(['data' => $res]);
-    }   
+    }
+
+    /**
+     * 自定义验重字段
+     * @param types 分类
+     * @param
+     */
+    public function uniqueField()
+    {
+        $param = $this->param;
+        if ($param['types'] == 'crm_user') {
+            $list = array_filter(UserModel::$import_field_list, function ($val) {
+                return $val['is_unique'] == 1;
+            });
+            $list = array_column($list, 'name');
+        } else {
+            $list = db('admin_field')->where(['types' => $param['types'],'is_unique' => 1])->column('name');
+        }
+        $list = $list ? implode(',',$list) : '无';
+        return resultArray(['data' => $list]);
+    }       
 }

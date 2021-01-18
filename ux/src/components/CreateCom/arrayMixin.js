@@ -6,7 +6,7 @@ export default {
     }
   },
   watch: {
-    value: function (val) {
+    value: function(val) {
       this.dataValue = val
     }
   },
@@ -36,6 +36,7 @@ export default {
     valueChange(val) {
       this.$emit('value-change', {
         index: this.index,
+        item: this.item,
         value: val
       })
     }

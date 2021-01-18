@@ -1,79 +1,94 @@
 <template>
   <div class="my-task-dialog">
-    <el-dialog title="新建任务"
-               :visible.sync="newDialogVisible"
-               width="700px"
-               :show-close="false"
-               v-loading="newLoading"
-               :close-on-click-modal="false"
-               :before-close="handleClose">
-      <img class="el-icon-close"
-           src="@/assets/img/task_close.png"
-           @click="handleClose"
-           alt="">
-      <el-form :model="formInline"
-               ref="form"
-               :rules="rules">
-        <el-form-item :class="'el-form-item'+ '-' + item.field"
-                      :label="item.label"
-                      :prop="item.field"
-                      v-for="(item, index) in formList"
-                      :key="index">
-          <el-input v-if="item.type == 'textarea'"
-                    :autosize="{ minRows: 4}"
-                    v-model="formInline[item.field]"
-                    type="textarea"></el-input>
-          <el-date-picker v-else-if="item.type == 'time'"
-                          v-model="formInline[item.field]"
-                          type="date"
-                          placeholder="选择日期">
-          </el-date-picker>
-          <div v-else-if="item.type == 'priority'"
-               class="priority-box">
-            <el-radio-group v-model="formInline[item.field]"
-                            fill="red"
-                            text-color="#FFF">
+    <el-dialog
+      v-loading="newLoading"
+      :visible.sync="newDialogVisible"
+      :show-close="false"
+      :close-on-click-modal="false"
+      :before-close="handleClose"
+      title="新建任务"
+      width="700px">
+      <img
+        class="el-icon-close"
+        src="@/assets/img/task_close.png"
+        alt=""
+        @click="handleClose">
+      <el-form
+        ref="form"
+        :model="formData"
+        :rules="rules">
+        <el-form-item
+          v-for="(item, index) in formList"
+          :class="'el-form-item'+ '-' + item.field"
+          :label="item.label"
+          :prop="item.field"
+          :key="index">
+          <el-input
+            v-if="item.type == 'textarea'"
+            :autosize="{ minRows: 4}"
+            v-model="formData[item.field]"
+            type="textarea"/>
+          <el-date-picker
+            v-else-if="item.type == 'time'"
+            v-model="formData[item.field]"
+            type="date"
+            placeholder="选择日期"/>
+          <div
+            v-else-if="item.type == 'priority'"
+            class="priority-box">
+            <el-radio-group
+              v-model="formData[item.field]"
+              fill="red"
+              text-color="#FFF">
               <el-radio :label="3">高</el-radio>
               <el-radio :label="2">中</el-radio>
               <el-radio :label="1">低</el-radio>
               <el-radio :label="0">无</el-radio>
             </el-radio-group>
           </div>
-          <div v-else-if="item.type == 'popover'"
-               class="type-popover">
-            <el-popover placement="bottom-end"
-                        width="280"
-                        trigger="click">
-              <xh-user ref="xhuser"
-                       :radio="radio"
-                       :selectedData="colleaguesList"
-                       @changeCheckout="changeCheckout">
-              </xh-user>
-              <div class="select-box"
-                   slot="reference">
-                <span v-for="(item, index) in colleaguesList"
-                      :key="index"
-                      class="select-box-span">
-                  {{item.username}}
-                  <span class="el-icon-close"
-                        @click.stop="selectDelect(item, index)"> </span>
+          <div
+            v-else-if="item.type == 'popover'"
+            class="type-popover">
+            <el-popover
+              placement="bottom-end"
+              width="280"
+              trigger="click">
+              <xh-user
+                ref="xhuser"
+                :radio="radio"
+                :selected-data="colleaguesList"
+                @changeCheckout="changeCheckout"/>
+              <div
+                slot="reference"
+                class="select-box">
+                <span
+                  v-for="(item, index) in colleaguesList"
+                  :key="index"
+                  class="select-box-span">
+                  {{ item.username }}
+                  <span
+                    class="el-icon-close"
+                    @click.stop="selectDelect(item, index)"/>
                 </span>
-                <span class="el-icon-plus"></span>
+                <span class="el-icon-plus"/>
               </div>
             </el-popover>
           </div>
-          <el-input v-else
-                    v-model="formInline[item.field]"></el-input>
+          <el-input
+            v-else
+            v-model="formData[item.field]"/>
         </el-form-item>
-        <related-business :allData="allData"
-                          :marginLeft="'0'"
-                          @checkInfos="checkInfos">
-        </related-business>
+        <related-business
+          :all-data="allData"
+          :margin-left="'0'"
+          @checkInfos="checkInfos"/>
       </el-form>
-      <span slot="footer"
-            class="dialog-footer">
-        <el-button type="primary"
-                   @click="dialogVisibleSubmit">保存</el-button>
+      <span
+        slot="footer"
+        class="dialog-footer">
+        <el-button
+          type="primary"
+          @click="dialogVisibleSubmit">保存</el-button>
         <el-button @click="handleClose">取消</el-button>
       </span>
     </el-dialog>
@@ -81,7 +96,6 @@
 </template>
 
 <script>
-import { usersList, depList } from '@/api/common'
 // 关联业务 - 选中列表
 import relatedBusiness from '@/components/relatedBusiness'
 import XhUser from '@/components/CreateCom/XhUser'
@@ -91,9 +105,23 @@ export default {
     relatedBusiness,
     XhUser
   },
+  props: {
+    newDialogVisible: Boolean,
+    newLoading: Boolean
+  },
   data() {
+    var validateTime = (rule, value, callback) => {
+      if (this.formData.start_time && this.formData.end_time) {
+        if (
+          this.formData.start_time.getTime() >= this.formData.end_time.getTime()
+        ) {
+          callback(new Error('开始时间必须小于结束时间'))
+        }
+      }
+      callback()
+    }
     return {
-      formInline: {
+      formData: {
         priority: 0
       },
       formList: [
@@ -113,7 +141,9 @@ export default {
         name: [
           { required: true, message: '任务名称不能为空', trigger: 'blur' },
           { max: 50, message: '任务名称长度最多为50个字符', trigger: 'blur' }
-        ]
+        ],
+        start_time: [{ validator: validateTime, trigger: 'blur' }],
+        end_time: [{ validator: validateTime, trigger: 'blur' }]
       },
       // 获取选择的数据id数组
       relevanceAll: {},
@@ -121,9 +151,14 @@ export default {
       radio: true
     }
   },
-  props: {
-    newDialogVisible: Boolean,
-    newLoading: Boolean
+  watch: {
+    newDialogVisible(value) {
+      if (!value) {
+        this.formData = {
+          priority: 0
+        }
+      }
+    }
   },
   created() {},
   methods: {
@@ -133,26 +168,26 @@ export default {
     dialogVisibleSubmit() {
       this.$refs.form.validate(valid => {
         if (valid) {
-          var formInlineCopy = Object.assign({}, this.formInline)
-          formInlineCopy = {
+          var formDataCopy = Object.assign({}, this.formData)
+          formDataCopy = {
             main_user_id:
               this.colleaguesList.length == 0 ? '' : this.colleaguesList[0].id,
-            start_time: this.formInline.start_time
-              ? new Date(this.formInline.start_time).getTime() / 1000
-              : this.formInline.start_time,
-            stop_time: this.formInline.end_time
-              ? new Date(this.formInline.end_time).getTime() / 1000
-              : this.formInline.end_time,
-            description: this.formInline.description,
-            priority: this.formInline.priority,
-            work_id: this.formInline.work_id,
-            name: this.formInline.name,
+            start_time: this.formData.start_time
+              ? this.formData.start_time.getTime() / 1000
+              : '',
+            stop_time: this.formData.end_time
+              ? this.formData.end_time.getTime() / 1000
+              : '',
+            description: this.formData.description,
+            priority: this.formData.priority,
+            work_id: this.formData.work_id,
+            name: this.formData.name,
             customer_ids: this.relevanceAll.customer_ids,
             contacts_ids: this.relevanceAll.contacts_ids,
             business_ids: this.relevanceAll.business_ids,
             contract_ids: this.relevanceAll.contract_ids
           }
-          this.$emit('dialogVisibleSubmit', formInlineCopy)
+          this.$emit('dialogVisibleSubmit', formDataCopy)
         } else {
           return false
         }

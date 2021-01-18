@@ -10,6 +10,7 @@ namespace app\crm\controller;
 use app\admin\controller\ApiCommon;
 use think\Hook;
 use think\Request;
+use think\Db;
 
 class Contacts extends ApiCommon
 {
@@ -22,8 +23,8 @@ class Contacts extends ApiCommon
     public function _initialize()
     {
         $action = [
-            'permission'=>[''],
-            'allow'=>['']            
+            'permission'=>['exceldownload'],
+            'allow'=>['relation']            
         ];
         Hook::listen('check_auth',$action);
         $request = Request::instance();
@@ -62,7 +63,18 @@ class Contacts extends ApiCommon
         $param['create_user_id'] = $userInfo['id'];
         $param['owner_user_id'] = $userInfo['id'];
         
-        if ($contactsModel->createData($param)) {
+        if ($data = $contactsModel->createData($param)) {
+            //关联 联系人与商机  客户添加与商机添加联系人可共用此接口
+            $business_id = $param['business_id']?$param['business_id']:0;
+            if($business_id != 0){
+                $data['cancel_or_relation'] = 1;// 1:关联 0取消
+                $data['business_id'] = $business_id;
+                if ($res =  Db::name('crm_contacts_business')->data($data)->insert()) {
+                    return resultArray(['data' => '添加成功']);
+                } else {
+                    return resultArray(['error' => Db::name('crm_contacts_business')->getError()]);
+                }
+            }
             return resultArray(['data' => '添加成功']);
         } else {
             return resultArray(['error' => $contactsModel->getError()]);
@@ -102,18 +114,17 @@ class Contacts extends ApiCommon
     public function update()
     {    
         $contactsModel = model('Contacts');
-        $userModel = new \app\admin\model\User();
         $param = $this->param;
         $userInfo = $this->userInfo;
         $param['user_id'] = $userInfo['id'];
 
-        //判断权限
-        $data = $contactsModel->getDataById($param['id']);
-        $auth_user_ids = $userModel->getUserByPer('crm', 'contacts', 'update');
-        if (!in_array($data['owner_user_id'],$auth_user_ids)) {
-            header('Content-Type:application/json; charset=utf-8');
-            exit(json_encode(['code'=>102,'error'=>'无权操作']));
-        }        
+        // //判断权限
+        // $data = $contactsModel->getDataById($param['id']);
+        // $auth_user_ids = $userModel->getUserByPer('crm', 'contacts', 'update');
+        // if (!in_array($data['owner_user_id'],$auth_user_ids)) {
+        //     header('Content-Type:application/json; charset=utf-8');
+        //     exit(json_encode(['code'=>102,'error'=>'无权操作']));
+        // }        
         if ($contactsModel->updateDataById($param, $param['id'])) {
             return resultArray(['data' => '编辑成功']);
         } else {
@@ -122,16 +133,18 @@ class Contacts extends ApiCommon
     }
 
     /**
-     * 删除联系人（逻辑删）
+     * 删除联系人
      * @author Michael_xu
      * @param 
      * @return 
      */
     public function delete()
     {
+        $param = $this->param;    
         $contactsModel = model('Contacts');
-        $param = $this->param;        
-
+        $recordModel = new \app\admin\model\Record();
+        $fileModel = new \app\admin\model\File();
+        $actionRecordModel = new \app\admin\model\ActionRecord();
         if (!is_array($param['id'])) {
             $contacts_id[] = $param['id'];
         } else {
@@ -142,7 +155,7 @@ class Contacts extends ApiCommon
 
         //数据权限判断
         $userModel = new \app\admin\model\User();
-        $auth_user_ids = $userModel->getUserByPer('crm', 'business', 'delete');
+        $auth_user_ids = $userModel->getUserByPer('crm', 'contacts', 'delete');
         foreach ($contacts_id as $k=>$v) {
             $isDel = true;
             //数据详情
@@ -164,9 +177,13 @@ class Contacts extends ApiCommon
             if (!$data) {
                 return resultArray(['error' => $contactsModel->getError()]);
             }
-            //删除操作记录
-            $actionRecordModel = new \app\admin\model\ActionRecord();
-            $res = $actionRecordModel->delDataById(['types' => 'crm_contacts','action_id' => $delIds]);                        
+            //删除跟进记录
+            $recordModel->delDataByTypes('crm_contacts',$delIds);
+            //删除关联附件
+            $fileModel->delRFileByModule('crm_contacts',$delIds);
+            //删除关联操作记录
+            $actionRecordModel->delDataById(['types'=>'crm_contacts','action_id'=>$delIds]);            
+            actionLog($delIds,'','',''); 
         }        
         if ($errorMessage) {
             return resultArray(['error' => $errorMessage]);
@@ -195,6 +212,8 @@ class Contacts extends ApiCommon
         if (!$param['owner_user_id']) {
             return resultArray(['error' => '变更负责人不能为空']);
         }
+        $owner_user_info = $userModel->getUserById($param['owner_user_id']);
+
         if (!$param['contacts_id'] || !is_array($param['contacts_id'])) {
             return resultArray(['error' => '请选择需要转移的联系人']); 
         }
@@ -207,10 +226,12 @@ class Contacts extends ApiCommon
         $data['update_time'] = time();
         $errorMessage = [];
         foreach ($param['contacts_id'] as $contacts_id) {
+            // 转移至当前负责人的直接跳过
+            if ($param['owner_user_id'] == $userInfo['id']) continue;
+            
             $contactsInfo = $contactsModel->getDataById($contacts_id);
-
             if (!$contactsInfo) {
-                $errorMessage[] = 'id:为'.$contacts_id.'的联系人转移失败，错误原因：数据不存在；';
+                $errorMessage[] = '名称:为《'.$contactsInfo['name'].'》的联系人转移失败，错误原因：数据不存在；';
                 continue;
             }
             //权限判断
@@ -223,11 +244,147 @@ class Contacts extends ApiCommon
                 $errorMessage[] = $contactsInfo['name'].'"转移失败，错误原因：数据出错；';
                 continue;
             }
+			updateActionLog($userInfo['id'], 'crm_contacts', $contacts_id, '', '', '将联系人转移给：' . $owner_user_info['realname']);			
         }
         if (!$errorMessage) {
             return resultArray(['data' => '转移成功']);
         } else {
             return resultArray(['error' => $errorMessage]);
         }
-    }    
+    }
+
+    /**
+     * 联系人导入模板
+     * @author Michael_xu
+     * @param string $save_path 本地保存路径     用于错误数据导出，在 Admin\Model\Excel::importExcel()调用
+     * @return
+     */ 
+    public function excelDownload($save_path = '') 
+    {
+        $param = $this->param;
+        $userInfo = $this->userInfo;
+        $excelModel = new \app\admin\model\Excel();
+
+        // 导出的字段列表
+        $fieldModel = new \app\admin\model\Field();
+        $fieldParam['types'] = 'crm_contacts'; 
+        $fieldParam['action'] = 'excel'; 
+        $field_list = $fieldModel->field($fieldParam);
+        $res = $excelModel->excelImportDownload($field_list, 'crm_contacts', $save_path);
+    }  
+
+    /**
+     * 联系人导出
+     * @author Michael_xu
+     * @param 
+     * @return
+     */
+    public function excelExport()
+    {
+        $param = $this->param;
+        $userInfo = $this->userInfo;
+        $param['user_id'] = $userInfo['id'];
+        if ($param['contacts_id']) {
+           $param['contacts_id'] = ['condition' => 'in','value' => $param['contacts_id'],'form_type' => 'text','name' => ''];
+           $param['is_excel'] = 1;
+        }        
+
+        $excelModel = new \app\admin\model\Excel();
+        // 导出的字段列表
+        $fieldModel = new \app\admin\model\Field();
+        $field_list = $fieldModel->getIndexFieldConfig('crm_contacts', $userInfo['id']);
+        // 文件名
+        $file_name = '5kcrm_contacts_'.date('Ymd');
+
+        $model = model('Contacts');
+        $temp_file = $param['temp_file'];
+        unset($param['temp_file']);
+        $page = $param['page'] ?: 1;
+        unset($param['page']);
+        unset($param['export_queue_index']);
+        return $excelModel->batchExportCsv($file_name, $temp_file, $field_list, $page, function($page, $limit) use ($model, $param, $field_list) {
+            $param['page'] = $page;
+            $param['limit'] = $limit;
+            $data = $model->getDataList($param);
+            $data['list'] = $model->exportHandle($data['list'], $field_list, 'contacts');
+            return $data;
+        });
+    } 
+
+    /**
+     * 联系人数据导入
+     * @author Michael_xu
+     * @param 
+     * @return
+     */
+    public function excelImport()
+    {
+        $param = $this->param;
+        $userInfo = $this->userInfo;
+        $excelModel = new \app\admin\model\Excel();
+        $param['types'] = 'crm_contacts';
+        $param['create_user_id'] = $userInfo['id'];
+        $param['owner_user_id'] = $param['owner_user_id'] ? : $userInfo['id'];
+        $file = request()->file('file');
+        // $res = $excelModel->importExcel($file, $param, $this);
+        $res = $excelModel->batchImportData($file, $param, $this);
+        if (!$res) {
+            return resultArray(['error'=>$excelModel->getError()]);
+        }
+        return resultArray(['data' => $excelModel->getError()]);
+    }  
+
+    /**
+     * 联系人  关联/取消关联  商机
+     * @return [type] [description]
+     */
+    public function relation()
+    {
+        $param = $this->param;
+        if (!$param['contacts_id'] || !$param['contacts_id']) {
+            return resultArray(['error' => '参数错误!']);
+        }
+        $res = 1;
+        if ($param['is_relation'] == 1) {//关联
+            $data = [];
+            if (is_array($param['contacts_id'])) {//商机关联联系人
+                foreach ($param['contacts_id'] as $key => $value) {
+                    $data['contacts_id'] = $value;
+                    $data['business_id'] = $param['business_id'];
+                    $ret = Db::name('crm_contacts_business')->where(['contacts_id' => $value,'business_id' => $param['business_id']])->find();
+                    if (!$ret) {
+                        if (!Db::name('crm_contacts_business')->insert($data)) {
+                            $res = 0;
+                        }
+                    }
+                }
+            } else {//联系人关联商机
+                foreach ($param['business_id'] as $key => $value) {
+                    $data['business_id'] = $value;
+                    $data['contacts_id'] = $param['contacts_id'];
+                    $ret = Db::name('crm_contacts_business')->where(['contacts_id' => $param['contacts_id'],'business_id' => $value])->find();
+                    if (!$ret) {
+                        if (!Db::name('crm_contacts_business')->insert($data)) {
+                            $res = 0;
+                        }
+                    }
+                }
+            }
+        } else {//取消关联
+            $where = array();
+            if (is_array($param['contacts_id'])) {
+                $where['contacts_id'] = array('in',$param['contacts_id']);
+                $where['business_id'] = array('eq',$param['business_id']);
+            } else {
+                $where['business_id'] = array('in',$param['business_id']);
+                $where['contacts_id'] = array('eq',$param['contacts_id']);
+            }
+            Db::name('crm_contacts_business')->where($where)->delete();
+        }
+        if ($res == 1) {
+            return resultArray(['data' => '操作成功!']);
+        } else {
+            return resultArray(['error' => '操作失败，请重试!']);
+        }
+    }
 }

@@ -8,6 +8,8 @@
 namespace app\oa\controller;
 
 use app\admin\controller\ApiCommon;
+use app\admin\model\Message;
+use app\admin\model\User;
 use think\Hook;
 use think\Request;
 use think\Db;
@@ -24,7 +26,7 @@ class Examine extends ApiCommon
     {
         $action = [
             'permission'=>[''],
-            'allow'=>['index','save','read','update','delete','categorylist','check','revokecheck']            
+            'allow'=>['index','save','read','update','delete','categorylist','check','revokecheck','category','categorysave','categoryupdate','categorydelete','categoryenables']            
         ];
         Hook::listen('check_auth',$action);
         $request = Request::instance();
@@ -32,6 +34,12 @@ class Examine extends ApiCommon
         if (!in_array($a, $action['permission'])) {
             parent::_initialize();
         }
+        //权限判断
+        $unAction = ['index','save','read','update','delete','categorylist','check','revokecheck'];
+        if (!in_array($a, $unAction) && !checkPerByAction('admin', 'oa', 'examine')) {
+            header('Content-Type:application/json; charset=utf-8');
+            exit(json_encode(['code'=>102,'error'=>'无权操作']));
+        }               
     }
 
     /**
@@ -88,7 +96,7 @@ class Examine extends ApiCommon
         if (!$check_user_id) {
             return resultArray(['error' => '无可用审批人，请联系管理员']);
         }
-        $param['check_user_id'] = $check_user_id; 
+        $param['check_user_id'] = is_array($check_user_id) ? ','.implode(',',$check_user_id).',' : $check_user_id; 
         //流程审批人
         // $flow_user_id = $examineFlowModel->getUserByFlow($examineFlowData['flow_id'], $userInfo['id']); 
         // $param['flow_user_id'] = $flow_user_id ? arrayToString($flow_user_id) : ''; 
@@ -176,7 +184,7 @@ class Examine extends ApiCommon
         if (!$check_user_id) {
             return resultArray(['error' => '无可用审批人，请联系管理员']);
         }
-        $param['check_user_id'] = $check_user_id; 
+        $param['check_user_id'] = is_array($check_user_id) ? ','.implode(',',$check_user_id).',' : $check_user_id; 
         $param['check_status'] = 0;
         //流程审批人
         // $flow_user_id = $examineFlowModel->getUserByFlow($examineFlowData['flow_id'], $dataInfo['create_user_id']); 
@@ -226,7 +234,10 @@ class Examine extends ApiCommon
         $data = $examineModel->delDataById($param['id']);
         if (!$data) {
             return resultArray(['error' => $examineModel->getError()]);
-        }       
+        } 
+        $fileModel = new \app\admin\model\File();
+        //删除关联附件
+        $fileModel->delRFileByModule('oa_examine',$param['id']);    
         actionLog($param['id'], '', '', '删除了审批');
         return resultArray(['data' => '删除成功']);
     }
@@ -286,7 +297,8 @@ class Examine extends ApiCommon
             return resultArray(['error' => '数据不存在或已删除']);
         } 
         //将当前审批流标记为已删除，重新创建审批流(目的：保留审批流程记录)
-        $newData = db('admin_examine_flow')->where(['flow_id' => $dataInfo['flow_id']])->find();
+        // $newData = db('admin_examine_flow')->where(['flow_id' => $dataInfo['flow_id']])->find();
+        
         $param['name'] = $param['title'].'流程';
         $param['types'] = 'oa_examine';        
         $param['types_id'] = $category_id;        
@@ -305,15 +317,18 @@ class Examine extends ApiCommon
                     return resultArray(['error' => $examineStepModel->getError()]);
                 }  
             }
-            $upData = [];
-            $upData['is_deleted'] = 1;      
-            $upData['delete_time'] = time();      
-            $upData['delete_user_id'] = $userInfo['id'];      
-            $upData['status'] = 0;
-            $resFlow = db('admin_examine_flow')->where(['flow_id' => $dataInfo['flow_id']])->update($upData);
-            if (!$resFlow) {
-                return resultArray(['error' => '编辑失败']);
-            }
+			if ($dataInfo['flow_id']) {
+				$upData = [];
+	            $upData['is_deleted'] = 1;      
+	            $upData['delete_time'] = time();      
+	            $upData['delete_user_id'] = $userInfo['id'];      
+	            $upData['status'] = 0;
+	            $resFlow = db('admin_examine_flow')->where(['flow_id' => $dataInfo['flow_id']])->update($upData);
+	            if (!$resFlow) {
+	                return resultArray(['error' => '编辑失败']);
+	            }
+	        }            
+            
             $param['flow_id'] = $resUpdate['flow_id'];
             $res = $categoryModel->updateDataById($param, $param['id']);
             if (!$res) {
@@ -376,13 +391,14 @@ class Examine extends ApiCommon
         $where['is_deleted'] = ['neq',1];
         $where['status'] = ['eq',1];
         $list = db('oa_examine_category')
-            ->where($where)
-            ->where(function ($query) {
-                $query->where(['user_ids' => '','structure_ids' => '']);
-            })->whereOr(function($query) use ($userInfo){
-                $query->where('structure_ids','like',','.$userInfo['structure_id'].',')
-                      ->whereOr('user_ids','like',','.$userInfo['id'].',');
-        })->select();
+                ->where($where)
+                ->where(function ($query) use ($userInfo){
+                    $query->where('`user_ids` = "" AND `structure_ids` = ""')
+                    ->whereOr(function($query) use ($userInfo){
+                        $query->where('structure_ids','like','%,'.$userInfo['structure_id'].',%')
+                              ->whereOr('user_ids','like','%,'.$userInfo['id'].',%');
+                    });
+                })->select();
         return resultArray(['data' => $list]);        
     } 
 
@@ -470,17 +486,37 @@ class Examine extends ApiCommon
             $resRecord = $examineRecordModel->createData($checkData);
             //审核通过
             if ($is_end == 1 && !empty($status)) {
-                //发送站内信
-                $sendContent = '您的'.$dataInfo['category_name'].','.$userInfo['realname'].'已审核通过,审批结束';
-                $resMessage = sendMessage($dataInfo['owner_user_id'], $sendContent, $param['id'], 1);
+                // 审批通过消息告知审批提交人
+                (new Message())->send(
+					Message::EXAMINE_PASS,
+					[
+						'title' => $dataInfo['category_name'],
+						'action_id' => $param['id']
+					],
+					$dataInfo['create_user_id']
+				);
             } else {
                 if ($status) {
-                    //发送站内信
-                    $sendContent = '您的'.$dataInfo['category_name'].','.$userInfo['realname'].'已审核通过';
-                    $resMessage = sendMessage($dataInfo['owner_user_id'], $sendContent, $param['id'], 1);
+                    // 通过后发送消息给下一审批人
+                    (new Message())->send(
+                        Message::EXAMINE_TO_DO,
+                        [
+                            'from_user' => User::where(['id' => $dataInfo['create_user_id']])->value('realname'),
+                            'title' => $dataInfo['category_name'],
+                            'action_id' => $param['id']
+                        ],
+                        stringToArray($examineData['check_user_id'])
+                    );
                 } else {
-                    $sendContent = '您的'.$dataInfo['category_name'].','.$userInfo['realname'].'已审核拒绝,审核意见：'.$param['content'];
-                    $resMessage = sendMessage($dataInfo['owner_user_id'], $sendContent, $param['id'], 1);
+                    // 审批驳回消息告知审批提交人
+                    (new Message())->send(
+                        Message::EXAMINE_REJECT,
+                        [
+                            'title' => $dataInfo['category_name'],
+                            'action_id' => $param['id']
+                        ],
+                        $dataInfo['create_user_id']
+                    );
                 }                
             }
             return resultArray(['data' => '审批成功']);            
@@ -540,7 +576,7 @@ class Examine extends ApiCommon
         $resExamine = db('oa_examine')->where(['examine_id' => $examine_id])->update($examineData);
         if ($resExamine) {
             //将审批记录至为无效
-            // $examineRecordModel->setEnd(['types' => 'oa_examine','types_id' => $examine_id]);
+            $examineRecordModel->setEnd(['types' => 'oa_examine','types_id' => $examine_id]);
             //审批记录
             $resRecord = $examineRecordModel->createData($checkData);
             return resultArray(['data' => '撤销成功']);            

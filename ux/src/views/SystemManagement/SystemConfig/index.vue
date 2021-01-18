@@ -1,60 +1,69 @@
 <template>
-  <flexbox style="height:100%;"
-           direction="column"
-           align="stretch">
+  <flexbox
+    style="height:100%;"
+    direction="column"
+    align="stretch">
     <div class="header">
-      系统配置
+      企业首页
     </div>
-    <div class="body"
-         v-loading="loading">
-      <el-button class="save-button"
-                 @click="save"
-                 type="primary">保存</el-button>
+    <div
+      v-loading="loading"
+      class="body">
+      <el-button
+        v-if="systemSaveAuth"
+        class="save-button"
+        type="primary"
+        @click="save">保存</el-button>
 
       <div class="section">
         <div class="name">企业名称</div>
-        <el-input v-model="systemName"></el-input>
+        <el-input v-model="systemName"/>
       </div>
       <div class="section">
         <div class="name">企业logo</div>
-        <el-upload v-if="systemImage == ''"
-                   drag
-                   class="upload"
-                   :show-file-list="false"
-                   action="http"
-                   accept="image/png, image/jpeg, image/gif, image/jpg"
-                   :http-request="fileUpload">
-          <i class="el-icon-plus uploader-icon"></i>
+        <el-upload
+          v-if="systemImage == ''"
+          :show-file-list="false"
+          :http-request="fileUpload"
+          drag
+          class="upload"
+          action="http"
+          accept="image/png, image/jpeg, image/gif, image/jpg">
+          <i class="el-icon-plus uploader-icon"/>
         </el-upload>
-        <div v-else
-             class="upload-show">
+        <div
+          v-else
+          class="upload-show">
           <img :src="systemImage">
-          <i @click="deleteSystemImage"
-             class="el-icon-remove icon-delete"></i>
+          <i
+            class="el-icon-remove icon-delete"
+            @click="deleteSystemImage"/>
         </div>
       </div>
     </div>
-    <edit-image title="编辑企业logo"
-                :fixedNumber="[15, 4]"
-                previewWidth="150px"
-                previewHeight="40px"
-                previewRadius="0"
-                width="550px"
-                :show="showEditImage"
-                :image="editImage"
-                :file="editFile"
-                save-button-title="确定"
-                @save="submiteImage"
-                @close="showEditImage=false"></edit-image>
+    <edit-image
+      :fixed-number="[15, 4]"
+      :show="showEditImage"
+      :image="editImage"
+      :file="editFile"
+      title="编辑企业logo"
+      preview-width="150px"
+      preview-height="40px"
+      preview-radius="0"
+      width="550px"
+      save-button-title="确定"
+      @save="submiteImage"
+      @close="showEditImage=false"/>
   </flexbox>
 </template>
 
 <script>
 import { adminSystemSave } from '@/api/systemManagement/SystemConfig'
 import EditImage from '@/components/EditImage'
+import { mapGetters } from 'vuex'
 
 export default {
-  name: 'system-config',
+  name: 'SystemConfig',
   components: {
     EditImage
   },
@@ -67,6 +76,12 @@ export default {
       systemName: '',
       systemImage: '',
       editedImage: null // 编辑后的图片
+    }
+  },
+  computed: {
+    ...mapGetters(['admin']),
+    systemSaveAuth() {
+      return this.admin && this.admin.system && this.admin.system.save
     }
   },
   mounted() {

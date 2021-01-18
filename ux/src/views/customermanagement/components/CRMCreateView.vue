@@ -1,76 +1,96 @@
 <template>
-  <create-view :loading="loading"
-               :body-style="{ height: '100%'}">
-    <flexbox direction="column"
-             align="stretch"
-             class="crm-create-container">
+  <create-view
+    :loading="loading"
+    :body-style="{ height: '100%'}">
+    <flexbox
+      direction="column"
+      align="stretch"
+      class="crm-create-container">
       <flexbox class="crm-create-header">
-        <div style="flex:1;font-size:17px;color:#333;">{{title}}</div>
-        <img @click="hidenView"
-             class="close"
-             src="@/assets/img/task_close.png" />
+        <div style="flex:1;font-size:17px;color:#333;">{{ title }}</div>
+        <img
+          class="close"
+          src="@/assets/img/task_close.png"
+          @click="hidenView" >
       </flexbox>
       <div class="crm-create-flex">
         <create-sections title="基本信息">
-          <flexbox direction="column"
-                   align="stretch">
+          <flexbox
+            direction="column"
+            align="stretch">
             <div class="crm-create-body">
-              <el-form ref="crmForm"
-                       :model="crmForm"
-                       label-position="top"
-                       class="crm-create-box">
-                <el-form-item v-for="(item, index) in this.crmForm.crmFields"
-                              :key="item.key"
-                              :prop="'crmFields.' + index + '.value'"
-                              :class="{ 'crm-create-block-item': item.showblock, 'crm-create-item': !item.showblock }"
-                              :rules="crmRules[item.key]"
-                              :style="{'padding-left': getPaddingLeft(item, index), 'padding-right': getPaddingRight(item, index)}">
-                  <div slot="label"
-                       style="display: inline-block;">
+              <el-form
+                ref="crmForm"
+                :model="crmForm"
+                label-position="top"
+                class="crm-create-box">
+                <el-form-item
+                  v-for="(item, index) in crmForm.crmFields"
+                  :key="item.key"
+                  :prop="'crmFields.' + index + '.value'"
+                  :class="{ 'crm-create-block-item': item.showblock, 'crm-create-item': !item.showblock }"
+                  :rules="crmRules[item.key]"
+                  :style="{'padding-left': getPaddingLeft(item, index), 'padding-right': getPaddingRight(item, index)}">
+                  <div
+                    slot="label"
+                    style="display: inline-block;">
                     <div style="margin:5px 0;font-size:12px;word-wrap:break-word;word-break:break-all;">
-                      {{item.data.name}}
+                      {{ item.data.name }}
                       <span style="color:#999;">
-                        {{item.data.input_tips ? '（'+item.data.input_tips+'）':''}}
+                        {{ item.data.input_tips ? '（'+item.data.input_tips+'）':'' }}
                       </span>
                     </div>
                   </div>
                   <!-- 员工 和部门 为多选（radio=false）  relation 相关合同商机使用-->
-                  <component :is="item.data.form_type | typeToComponentName"
-                             :value="item.value"
-                             :index="index"
-                             :item="item"
-                             :relation="item.relation"
-                             :radio="false"
-                             :disabled="item.disabled"
-                             @value-change="fieldValueChange">
-                  </component>
+                  <component
+                    :is="item.data.form_type | typeToComponentName"
+                    :value="item.value"
+                    :index="index"
+                    :item="item"
+                    :relation="item.relation"
+                    :radio="false"
+                    :types_id="action.id"
+                    :disabled="item.disabled"
+                    @value-change="fieldValueChange"/>
                 </el-form-item>
               </el-form>
             </div>
           </flexbox>
         </create-sections>
-        <create-sections v-if="showExamine"
-                         title="审核信息">
-          <div slot="header"
-               v-if="examineInfo.config===1 || examineInfo.config===0"
-               class="examine-type">{{examineInfo.config===1 ? '固定审批流' : '授权审批人'}}</div>
-          <create-examine-info ref="examineInfo"
-                               :types="'crm_' + crmType"
-                               :types_id="action.id"
-                               @value-change="examineValueChange"></create-examine-info>
+        <create-sections
+          v-if="showExamine"
+          title="审核信息">
+          <div
+            v-if="examineInfo.config===1 || examineInfo.config===0"
+            slot="header"
+            class="examine-type">{{ examineInfo.config===1 ? '固定审批流' : '授权审批人' }}</div>
+          <create-examine-info
+            ref="examineInfo"
+            :types="'crm_' + crmType"
+            :types_id="action.id"
+            @value-change="examineValueChange"/>
         </create-sections>
       </div>
 
       <div class="handle-bar">
-        <el-button class="handle-button"
-                   @click.native="hidenView">取消</el-button>
-        <el-button v-if="crmType=='customer' && action.type == 'save'"
-                   class="handle-button"
-                   type="primary"
-                   @click.native="saveField(true)">保存并新建联系人</el-button>
-        <el-button class="handle-button"
-                   type="primary"
-                   @click.native="saveField(false)">保存</el-button>
+        <el-button
+          class="handle-button"
+          @click.native="hidenView">取消</el-button>
+        <el-button
+          v-if="crmType=='customer' && action.type == 'save'"
+          class="handle-button"
+          type="primary"
+          @click.native="saveField(true)">保存并新建联系人</el-button>
+        <el-button
+          v-if="showDraft"
+          class="handle-button"
+          type="primary"
+          plain
+          @click.native="saveDraftField()">保存草稿</el-button>
+        <el-button
+          class="handle-button"
+          type="primary"
+          @click.native="saveField(false)">{{ sureBtnTitle }}</el-button>
       </div>
     </flexbox>
   </create-view>
@@ -106,10 +126,12 @@ import {
   crmReceivablesSave,
   crmReceivablesUpdate
 } from '@/api/customermanagement/money'
-import { crmReceivablesPlanSave } from '@/api/customermanagement/contract'
+import {
+  crmReceivablesPlanSave,
+  crmReceivablesPlanUpdate
+} from '@/api/customermanagement/contract'
 
 import {
-  regexIsNumber,
   regexIsCRMNumber,
   regexIsCRMMoneyNumber,
   regexIsCRMMobile,
@@ -117,6 +139,7 @@ import {
   formatTimeToTimestamp,
   timestampToFormatTime
 } from '@/utils'
+import { isArray } from '@/utils/types'
 
 import {
   XhInput,
@@ -137,7 +160,7 @@ import {
 } from '@/components/CreateCom'
 
 export default {
-  name: 'crm-create-view', // 所有新建效果的view
+  name: 'CrmCreateView', // 所有新建效果的view
   components: {
     CreateView,
     CreateSections,
@@ -157,42 +180,6 @@ export default {
     XhBusinessStatus,
     XhCustomerAddress,
     XhReceivablesPlan
-  },
-  computed: {
-    /** 合同 回款 下展示审批人信息 */
-    showExamine() {
-      if (this.crmType === 'contract' || this.crmType === 'receivables') {
-        return true
-      }
-      return false
-    }
-  },
-  watch: {
-    crmType: function(value) {
-      this.title = this.getTitle()
-      this.crmRules = {}
-      this.crmForm = {
-        crmFields: []
-      }
-      this.examineInfo = {}
-      this.getField()
-    }
-  },
-  data() {
-    return {
-      // 标题展示名称
-      title: '',
-      loading: false,
-      saveAndCreate: false, // 保存并新建
-      // 自定义字段验证规则
-      crmRules: {},
-      // 自定义字段信息表单
-      crmForm: {
-        crmFields: []
-      },
-      // 审批信息
-      examineInfo: {}
-    }
   },
   filters: {
     /** 根据type 找到组件 */
@@ -263,11 +250,66 @@ export default {
       }
     }
   },
+  data() {
+    return {
+      // 标题展示名称
+      title: '',
+      loading: false,
+      saveAndCreate: false, // 保存并新建
+      // 自定义字段验证规则
+      crmRules: {},
+      // 自定义字段信息表单
+      crmForm: {
+        crmFields: []
+      },
+      // 审批信息
+      examineInfo: {}
+    }
+  },
+  computed: {
+    /** 合同 回款 下展示审批人信息 */
+    showExamine() {
+      if (this.crmType === 'contract' || this.crmType === 'receivables') {
+        return true
+      }
+      return false
+    },
+    // 草稿按钮
+    showDraft() {
+      if (this.crmType === 'contract' || this.crmType === 'receivables') {
+        return true
+      }
+      return false
+    },
+    sureBtnTitle() {
+      if (this.crmType === 'contract' || this.crmType === 'receivables') {
+        return '提交审核'
+      }
+      return '保存'
+    }
+  },
+  watch: {
+    crmType: function(value) {
+      this.title = this.getTitle()
+      this.crmRules = {}
+      this.crmForm = {
+        crmFields: []
+      }
+      this.examineInfo = {}
+      this.getField()
+    }
+  },
   mounted() {
     // 获取title展示名称
     document.body.appendChild(this.$el)
     this.title = this.getTitle()
     this.getField()
+  },
+  destroyed() {
+    // remove DOM node after destroy
+    if (this.$el && this.$el.parentNode) {
+      this.$el.parentNode.removeChild(this.$el)
+    }
   },
   methods: {
     // 审批信息值更新
@@ -278,12 +320,12 @@ export default {
     fieldValueChange(data) {
       var item = this.crmForm.crmFields[data.index]
       item.value = data.value
-      //商机下处理商机状态
+      // 商机下处理商机状态
       if (
         this.crmType == 'business' &&
         item.data.form_type == 'business_type'
       ) {
-        //找到阶段数据
+        // 找到阶段数据
         for (
           let statusIndex = 0;
           statusIndex < this.crmForm.crmFields.length;
@@ -398,10 +440,20 @@ export default {
               break
             }
           }
+        } else if (item.data.form_type == 'receivables_plan') {
+          this.crmForm.crmFields.forEach(item => {
+            if (item.key == 'return_time') {
+              item.value = data.plan.return_date
+            } else if (item.key == 'return_type') {
+              item.value = data.plan.return_type
+            } else if (item.key == 'money') {
+              item.value = data.plan.money
+            }
+          })
         }
       }
 
-      //无事件的处理 后期可换成input实现
+      // 无事件的处理 后期可换成input实现
       if (
         item.data.form_type == 'user' ||
         item.data.form_type == 'structure' ||
@@ -477,8 +529,8 @@ export default {
           if (this.action.type == 'update' && item.value) {
             params['value'] = item.value
               ? item.value.map(function(item, index, array) {
-                  return parseInt(item)
-                })
+                return parseInt(item)
+              })
               : []
           } else {
             params['value'] = []
@@ -556,7 +608,7 @@ export default {
      */
     getParamsValueAndRelativeInfo(params, item, list) {
       if (this.action.type == 'relative') {
-        let relativeData = this.action.data[item.form_type]
+        const relativeData = this.action.data[item.form_type]
         if (item.form_type == 'receivables_plan') {
           params['value'] = ''
         } else {
@@ -568,7 +620,7 @@ export default {
       if (this.action.type == 'relative' || this.action.type == 'update') {
         // 回款计划 需要合同信息
         if (item.form_type === 'receivables_plan') {
-          let contractItem = this.getItemRelatveInfo(item, list, 'contract')
+          const contractItem = this.getItemRelatveInfo(item, list, 'contract')
           if (contractItem) {
             contractItem['form_type'] = 'contract'
             params['relation'] = contractItem
@@ -578,7 +630,7 @@ export default {
           item.form_type == 'business' ||
           item.form_type == 'contract'
         ) {
-          let customerItem = this.getItemRelatveInfo(item, list, 'customer')
+          const customerItem = this.getItemRelatveInfo(item, list, 'customer')
           if (item.form_type == 'business' && customerItem) {
             customerItem['form_type'] = 'customer'
             params['relation'] = customerItem
@@ -598,7 +650,7 @@ export default {
       if (this.action.type == 'relative') {
         crmItem = this.action.data[from_type]
       } else {
-        let crmObj = list.find(listItem => {
+        const crmObj = list.find(listItem => {
           return listItem.form_type === from_type
         })
         if (crmObj && crmObj.value && crmObj.value.length > 0) {
@@ -613,7 +665,7 @@ export default {
     getItemDisabledFromItem(item) {
       // 相关添加
       if (this.action.type == 'relative') {
-        let relativeDisInfos = {
+        const relativeDisInfos = {
           business: {
             customer: { customer: true },
             contacts: { customer: true }
@@ -635,10 +687,10 @@ export default {
           }
         }
         // 添加类型
-        let crmTypeDisInfos = relativeDisInfos[this.crmType]
+        const crmTypeDisInfos = relativeDisInfos[this.crmType]
         if (crmTypeDisInfos) {
           // 在哪个类型下添加
-          let relativeTypeDisInfos = crmTypeDisInfos[this.action.crmType]
+          const relativeTypeDisInfos = crmTypeDisInfos[this.action.crmType]
           if (relativeTypeDisInfos) {
             // 包含的字段值
             return relativeTypeDisInfos[item.form_type] || false
@@ -666,7 +718,7 @@ export default {
     getItemRulesArrayFromItem(item) {
       var tempList = []
 
-      //验证必填
+      // 验证必填
       if (item.is_null == 1) {
         if (item.form_type == 'category') {
           tempList.push({
@@ -683,10 +735,10 @@ export default {
         }
       }
 
-      //验证唯一
+      // 验证唯一
       if (item.is_unique == 1) {
         var validateUnique = (rule, value, callback) => {
-          if (!value && rule.item.is_null == 0) {
+          if ((isArray(value) && value.length == 0) || !value) {
             callback()
           } else {
             var validatesParams = {}
@@ -708,7 +760,10 @@ export default {
         tempList.push({
           validator: validateUnique,
           item: item,
-          trigger: ['blur']
+          trigger:
+            item.form_type == 'checkbox' || item.form_type == 'select'
+              ? ['change']
+              : ['blur']
         })
       }
 
@@ -768,20 +823,38 @@ export default {
       }
       return tempList
     },
+    // 保存草稿
+    saveDraftField() {
+      this.saveField(false, true)
+    },
     // 保存数据
-    saveField(saveAndCreate) {
+    saveField(saveAndCreate, isDraft = false) {
       this.saveAndCreate = saveAndCreate
       this.$refs.crmForm.validate(valid => {
         if (valid) {
           if (this.showExamine) {
             /** 验证审批数据 */
-            this.$refs.examineInfo.validateField(() => {
+            if (isDraft) {
+              // 不验证数据
               var params = this.getSubmiteParams(this.crmForm.crmFields)
-              if (this.examineInfo.config === 0) {
+              if (
+                this.examineInfo.config === 0 &&
+                this.examineInfo.hasOwnProperty('value') &&
+                this.examineInfo.value.length
+              ) {
                 params['check_user_id'] = this.examineInfo.value[0].id
               }
+              params.is_draft = 1
               this.submiteParams(params)
-            })
+            } else {
+              this.$refs.examineInfo.validateField(() => {
+                var params = this.getSubmiteParams(this.crmForm.crmFields)
+                if (this.examineInfo.config === 0) {
+                  params['check_user_id'] = this.examineInfo.value[0].id
+                }
+                this.submiteParams(params)
+              })
+            }
           } else {
             var params = this.getSubmiteParams(this.crmForm.crmFields)
             this.submiteParams(params)
@@ -850,8 +923,9 @@ export default {
           ? crmReceivablesUpdate
           : crmReceivablesSave
       } else if (this.crmType == 'receivables_plan') {
-        // 回款计划 不能编辑
-        return crmReceivablesPlanSave
+        return this.action.type == 'update'
+          ? crmReceivablesPlanUpdate
+          : crmReceivablesPlanSave
       }
     },
     /** 拼接上传传输 */
@@ -866,7 +940,7 @@ export default {
           // 位置信息需要注入多个字段
           this.getCustomerAddressParams(params, element)
         } else {
-          let value = this.getRealParams(element)
+          const value = this.getRealParams(element)
           if (!(element.data.form_type == 'date' && !value)) {
             params[element.key] = value
           }
@@ -963,12 +1037,6 @@ export default {
 
       return item.styleIndex % 2 == 0 ? '25px' : '0'
     }
-  },
-  destroyed() {
-    // remove DOM node after destroy
-    if (this.$el && this.$el.parentNode) {
-      this.$el.parentNode.removeChild(this.$el)
-    }
   }
 }
 </script>
@@ -1056,6 +1124,10 @@ export default {
     margin-top: 5px;
     margin-right: 20px;
   }
+}
+
+.el-button + .el-button {
+  margin-left: 0;
 }
 
 // 审核信息 里的审核类型

@@ -166,6 +166,11 @@ div[lazy=loading] {
   overflow: hidden;
 }
 
+// 内容区域padding
+.el-main {
+  padding: 15px;
+}
+
 .project-settings-list-top {
   top: 110px !important;
 }
@@ -204,4 +209,9 @@ div[lazy=loading] {
 // 去除焦点时的蓝色边框
 * :focus {
   outline: none;
+}
+
+// 全局提示文字限制宽度
+.el-tooltip__popper {
+  max-width: 300px !important;
 }

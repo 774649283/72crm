@@ -2,44 +2,48 @@
   <div class="schedule-calendar">
     <div class="title">
       <span>日程</span>
-      <div class="rt"
-           @click="addSchedule">
-        <span class="el-icon-plus"></span>
+      <div
+        class="rt"
+        @click="addSchedule">
+        <span class="el-icon-plus"/>
         <span>创建</span>
       </div>
     </div>
     <div>
-      <Calendar :markDateMore="calendarArr"
-                @changeMonth="changeMonth"
-                @choseDay="clickDay">
-      </Calendar>
+      <Calendar
+        :mark-date-more="calendarArr"
+        @changeMonth="changeMonth"
+        @choseDay="clickDay"/>
       <div v-loading="loading">
-        <div class="list"
-             v-for="(item, index) in scheduleList"
-             @click="rowFun(item)"
-             :key="index"
-             v-if="index < 1">
-          <p class="list-title">{{item.title}}</p>
+        <div
+          v-for="(item, index) in scheduleList"
+          v-if="index < 1"
+          :key="index"
+          class="list"
+          @click="rowFun(item)">
+          <p class="list-title">{{ item.title }}</p>
           <div>
-            <span class="time">{{item.start_time | moment("YYYY-MM-DD")}} - {{item.end_time | moment("YYYY-MM-DD")}}</span>
+            <span class="time">{{ item.start_time | moment("YYYY-MM-DD") }} - {{ item.end_time | moment("YYYY-MM-DD") }}</span>
             <template v-if="item.ownList.length != 0">
-              <span v-for="(k, j) in item.ownList"
-                    :key="j">{{item.ownList.length - 1 == j ? k.realname : k.realname + '、' }}</span>
+              <span
+                v-for="(k, j) in item.ownList"
+                :key="j">{{ item.ownList.length - 1 == j ? k.realname : k.realname + '、' }}</span>
             </template>
           </div>
         </div>
-        <p v-if="scheduleList.length >= 1"
-           @click="seeMore"
-           class="see-more">查看更多</p>
+        <p
+          v-if="scheduleList.length >= 1"
+          class="see-more"
+          @click="seeMore">查看更多</p>
       </div>
     </div>
     <!-- 新建日程 -->
-    <create-schedule v-if="showDialog"
-                     :text="newText"
-                     :formData="formData"
-                     @onSubmit="onSubmit"
-                     @closeDialog="closeDialog">
-    </create-schedule>
+    <create-schedule
+      v-if="showDialog"
+      :text="newText"
+      :form-data="formData"
+      @onSubmit="onSubmit"
+      @closeDialog="closeDialog"/>
   </div>
 </template>
 
@@ -47,24 +51,12 @@
 import Calendar from 'vue-calendar-component'
 import createSchedule from '../schedule/components/createSchedule'
 import { scheduleListAPI } from '@/api/oamanagement/workbench'
+import moment from 'moment'
 
 export default {
   components: {
     Calendar,
     createSchedule
-  },
-  data() {
-    return {
-      // 日历事件
-      scheduleList: [],
-      // 新建日程
-      formData: {},
-      showDialog: false,
-      newText: '',
-      // 详情
-      dialogVisible: false,
-      loading: false
-    }
   },
   props: {
     calendarArr: {
@@ -72,6 +64,20 @@ export default {
       default: () => {
         return []
       }
+    }
+  },
+  data() {
+    return {
+      // 日历事件
+      scheduleList: [],
+      currentMonthDate: new Date(),
+      // 新建日程
+      formData: {},
+      showDialog: false,
+      newText: '',
+      // 详情
+      dialogVisible: false,
+      loading: false
     }
   },
   mounted() {
@@ -84,12 +90,12 @@ export default {
       scheduleListAPI({ start_time: Date.parse(date) / 1000 })
         .then(res => {
           this.scheduleList = res.data
-          for (let item of document.getElementsByClassName('wh_item_date')) {
+          for (const item of document.getElementsByClassName('wh_item_date')) {
             item.classList.remove('wh_isToday')
           }
           this.loading = false
         })
-        .catch(error => {
+        .catch(() => {
           this.loading = false
         })
     },
@@ -99,6 +105,7 @@ export default {
     },
     // 创建日程
     addSchedule() {
+      this.formData = {}
       this.showDialog = true
       this.newText = '创建日程'
     },
@@ -107,6 +114,7 @@ export default {
       this.showDialog = false
     },
     onSubmit() {
+      this.refreshMonthData()
       this.closeDialog()
     },
     // 查看详情
@@ -115,22 +123,23 @@ export default {
     },
     // 切换月份
     changeMonth(val) {
+      this.currentMonthDate = new Date(val)
+      this.refreshMonthData()
+    },
+
+    /**
+     * 刷新月份数据
+     */
+    refreshMonthData() {
       this.scheduleList = []
-      // 初始化时间
-      let now = new Date(val)
-      // 获取当月第一天
-      var nowYear = now.getYear() //当前年
-      nowYear += nowYear < 2000 ? 1900 : 0
-      var nowMonth = now.getMonth() //当前月
-      var monthStartDate = new Date(nowYear, nowMonth, 1)
-      // 获取当月最后一天
-      var monthEndDate = new Date(nowYear, nowMonth + 1, 1)
-      var days = (monthEndDate - monthStartDate) / (1000 * 60 * 60 * 24)
-      var lastDay = new Date(nowYear, nowMonth, days)
       this.$emit(
         'changeMonth',
-        monthStartDate.getTime() / 1000,
-        lastDay.getTime() / 1000
+        moment(this.currentMonthDate)
+          .startOf('month')
+          .unix(),
+        moment(this.currentMonthDate)
+          .endOf('month')
+          .unix()
       )
     }
   }

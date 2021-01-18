@@ -35,11 +35,10 @@ class BusinessStatus extends ApiCommon
         $userInfo = $this->userInfo;
         //权限判断
         $unAction = ['type'];
-        $adminTypes = adminGroupTypes($userInfo['id']);
-        if (!in_array(6,$adminTypes) && !in_array(1,$adminTypes) && !in_array(2,$adminTypes) && !in_array($a, $unAction)) {
+        if (!in_array($a, $unAction) && !checkPerByAction('admin', 'crm', 'setting')) {
             header('Content-Type:application/json; charset=utf-8');
             exit(json_encode(['code'=>102,'error'=>'无权操作']));
-        }        
+        }                
     } 
 
     /**
@@ -70,6 +69,8 @@ class BusinessStatus extends ApiCommon
         
         $res = $businessStatusModel->createData($param);
         if ($res) {
+            $key = 'BI_queryCache_StatusList_Data';
+            cache($key, null, true);
             return resultArray(['data' => '添加成功']);
         } else {
             return resultArray(['error' => $businessStatusModel->getError()]);
@@ -107,6 +108,8 @@ class BusinessStatus extends ApiCommon
 
         $res = $businessStatusModel->updateDataById($param, $param['type_id']);
         if ($res) {
+            $key = 'BI_queryCache_StatusList_Data';
+            cache($key, null, true);
             return resultArray(['data' => '编辑成功']);
         } else {
             return resultArray(['error' => $businessStatusModel->getError()]);

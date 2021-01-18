@@ -1,40 +1,45 @@
 <template>
-  <div class="rc-cont"
-       v-empty="nopermission"
-       xs-empty-icon="nopermission"
-       xs-empty-text="暂无权限">
-    <flexbox v-if="!isSeas"
-             class="rc-head"
-             direction="row-reverse">
-      <el-button class="rc-head-item"
-                 @click.native="createClick"
-                 type="primary">新建合同
+  <div
+    v-empty="nopermission"
+    class="rc-cont"
+    xs-empty-icon="nopermission"
+    xs-empty-text="暂无权限">
+    <flexbox
+      v-if="!isSeas"
+      class="rc-head"
+      direction="row-reverse">
+      <el-button
+        class="rc-head-item"
+        type="primary"
+        @click.native="createClick">新建合同
       </el-button>
     </flexbox>
-    <el-table :data="list"
-              :height="tableHeight"
-              stripe
-              style="width: 100%;border: 1px solid #E6E6E6;"
-              :header-cell-style="headerRowStyle"
-              :cell-style="cellStyle"
-              @row-click="handleRowClick">
-      <el-table-column v-for="(item, index) in fieldList"
-                       :key="index"
-                       show-overflow-tooltip
-                       :prop="item.prop"
-                       :formatter="fieldFormatter"
-                       :label="item.label">
-      </el-table-column>
+    <el-table
+      :data="list"
+      :height="tableHeight"
+      :header-cell-style="headerRowStyle"
+      :cell-style="cellStyle"
+      stripe
+      style="width: 100%;border: 1px solid #E6E6E6;"
+      @row-click="handleRowClick">
+      <el-table-column
+        v-for="(item, index) in fieldList"
+        :key="index"
+        :prop="item.prop"
+        :formatter="fieldFormatter"
+        :label="item.label"
+        show-overflow-tooltip/>
     </el-table>
-    <c-r-m-full-screen-detail :visible.sync="showFullDetail"
-                              crmType="contract"
-                              :id="contractId">
-    </c-r-m-full-screen-detail>
-    <c-r-m-create-view v-if="isCreate"
-                       crm-type="contract"
-                       :action="createActionInfo"
-                       @save-success="createSaveSuccess"
-                       @hiden-view="isCreate=false"></c-r-m-create-view>
+    <c-r-m-full-screen-detail
+      :visible.sync="showFullDetail"
+      :id="contractId"
+      crm-type="contract"/>
+    <c-r-m-create-view
+      v-if="isCreate"
+      :action="createActionInfo"
+      crm-type="contract"
+      @save-success="createSaveSuccess"
+      @hiden-view="isCreate=false"/>
   </div>
 </template>
 
@@ -42,36 +47,15 @@
 import loading from '../mixins/loading'
 import CRMCreateView from './CRMCreateView'
 import { crmContractIndex } from '@/api/customermanagement/contract'
+import { moneyFormat } from '@/utils'
 
 export default {
-  name: 'relative-contract', //相关联系人  可能再很多地方展示 放到客户管理目录下
+  name: 'RelativeContract', // 相关联系人  可能再很多地方展示 放到客户管理目录下
   components: {
     CRMFullScreenDetail: () => import('./CRMFullScreenDetail.vue'),
     CRMCreateView
   },
-  computed: {},
   mixins: [loading],
-  data() {
-    return {
-      nopermission: false,
-      list: [],
-      fieldList: [],
-      tableHeight: '400px',
-      showFullDetail: false,
-      isCreate: false, // 控制新建
-      contractId: '', // 查看全屏联系人详情的 ID
-      /** 格式化规则 */
-      formatterRules: {},
-      // 创建的相关信息
-      createActionInfo: { type: 'relative', crmType: this.crmType, data: {} }
-    }
-  },
-  watch: {
-    id: function(val) {
-      this.list = []
-      this.getDetail()
-    }
-  },
   props: {
     /** 模块ID */
     id: [String, Number],
@@ -91,6 +75,26 @@ export default {
       default: () => {
         return {}
       }
+    }
+  },
+  data() {
+    return {
+      nopermission: false,
+      list: [],
+      fieldList: [],
+      tableHeight: '400px',
+      showFullDetail: false,
+      isCreate: false, // 控制新建
+      contractId: '', // 查看全屏联系人详情的 ID
+      // 创建的相关信息
+      createActionInfo: { type: 'relative', crmType: this.crmType, data: {}}
+    }
+  },
+  computed: {},
+  watch: {
+    id: function(val) {
+      this.list = []
+      this.getDetail()
     }
   },
   mounted() {
@@ -115,22 +119,13 @@ export default {
       })
 
       this.fieldList.push({ prop: 'end_time', width: '200', label: '结束日期' })
-
-      // 为客户名称加入字段格式化展示规则
-      function fieldFormatter(info) {
-        return info ? info.name : ''
-      }
-      this.formatterRules['customer_id'] = {
-        type: 'crm',
-        formatter: fieldFormatter
-      }
+      this.fieldList.push({ prop: 'check_status', width: '200', label: '状态' })
     },
     getDetail() {
       this.loading = true
-      crmContractIndex({
-        pageType: 'all',
-        customer_id: this.id
-      })
+      const params = { pageType: 'all' }
+      params[this.crmType + '_id'] = this.id
+      crmContractIndex(params)
         .then(res => {
           if (this.fieldList.length == 0) {
             this.getFieldList()
@@ -147,23 +142,31 @@ export default {
         })
     },
     /** 格式化字段 */
-    fieldFormatter(row, column) {
+    fieldFormatter(row, column, cellValue) {
       // 如果需要格式化
-      var aRules = this.formatterRules[column.property]
-      if (aRules) {
-        if (aRules.type === 'crm') {
-          if (column.property) {
-            return aRules.formatter(row[column.property + '_info'])
-          } else {
-            return ''
-          }
-        } else {
-          return aRules.formatter(row[column.property])
-        }
+      if (column.property === 'customer_id') {
+        return row.customer_id_info.name
+      } else if (column.property === 'check_status') {
+        return this.getStatusName(row.check_status)
+      } else if (['money'].includes(column.property)) {
+        return moneyFormat(cellValue)
       }
       return row[column.property]
     },
-    //当某一行被点击时会触发该事件
+
+    /**
+     * 对应的状态名
+     */
+    getStatusName(status) {
+      if (status > 5) {
+        return ''
+      }
+      return ['待审核', '审核中', '审核通过', '已拒绝', '已撤回', '未提交'][
+        status
+      ]
+    },
+
+    // 当某一行被点击时会触发该事件
     handleRowClick(row, column, event) {
       this.contractId = row.contract_id
       this.showFullDetail = true

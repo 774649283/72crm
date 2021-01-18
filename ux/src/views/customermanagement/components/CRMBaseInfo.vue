@@ -1,139 +1,175 @@
 <template>
   <div class="b-cont">
     <div>
-      <sections class="b-cells"
-                title="基本信息"
-                m-color="#46CDCF"
-                content-height="auto">
-        <flexbox :gutter="0"
-                 wrap="wrap"
-                 style="padding: 10px 8px 0;">
-          <flexbox-item :span="item.form_type === 'map_address' ? 12 : 0.5"
-                        v-for="(item, index) in list"
-                        v-if="item.form_type !== 'product'"
-                        :key="index"
-                        :class="{'b-cell' :item.form_type !== 'map_address'}">
-            <flexbox v-if="item.form_type === 'map_address'"
-                     :gutter="0"
-                     wrap="wrap">
-              <flexbox-item :span="0.5"
-                            @click.native="checkMapView(item)"
-                            class="b-cell">
-                <flexbox class="b-cell-b"
-                         align="stretch">
+      <sections
+        class="b-cells"
+        title="基本信息"
+        m-color="#46CDCF"
+        content-height="auto">
+        <flexbox
+          :gutter="0"
+          wrap="wrap"
+          style="padding: 10px 8px 0;">
+          <flexbox-item
+            v-for="(item, index) in list"
+            v-if="item.form_type !== 'product'"
+            :span="item.form_type === 'map_address' ? 12 : 0.5"
+            :key="index"
+            :class="{'b-cell' :item.form_type !== 'map_address'}">
+            <flexbox
+              v-if="item.form_type === 'map_address'"
+              :gutter="0"
+              wrap="wrap">
+              <flexbox-item
+                :span="0.5"
+                class="b-cell"
+                @click.native="checkMapView(item)">
+                <flexbox
+                  class="b-cell-b"
+                  align="stretch">
                   <div class="b-cell-name">定位</div>
-                  <div class="b-cell-value"
-                       style="color: #3E84E9;cursor: pointer;">{{item.value.location}}</div>
+                  <div
+                    class="b-cell-value"
+                    style="color: #3E84E9;cursor: pointer;">{{ item.value.location }}</div>
                 </flexbox>
               </flexbox-item>
-              <flexbox-item :span="0.5"
-                            class="b-cell">
-                <flexbox class="b-cell-b"
-                         align="stretch">
+              <flexbox-item
+                :span="0.5"
+                class="b-cell">
+                <flexbox
+                  class="b-cell-b"
+                  align="stretch">
                   <div class="b-cell-name">区域</div>
-                  <div class="b-cell-value">{{item.value.address | addressShow}}</div>
+                  <div class="b-cell-value">{{ item.value.address | addressShow }}</div>
                 </flexbox>
               </flexbox-item>
-              <flexbox-item :span="0.5"
-                            class="b-cell">
-                <flexbox class="b-cell-b"
-                         align="stretch">
+              <flexbox-item
+                :span="0.5"
+                class="b-cell">
+                <flexbox
+                  class="b-cell-b"
+                  align="stretch">
                   <div class="b-cell-name">详细地址</div>
-                  <div class="b-cell-value">{{item.value.detail_address}}</div>
+                  <div class="b-cell-value">{{ item.value.detail_address }}</div>
                 </flexbox>
               </flexbox-item>
             </flexbox>
 
-            <flexbox v-else-if="item.form_type === 'customer' || item.form_type === 'business' || item.form_type === 'contract' || item.form_type === 'contacts'"
-                     align="stretch"
-                     class="b-cell-b">
-              <div class="b-cell-name">{{item.name}}</div>
-              <div class="b-cell-value">{{item.value&&item.value.length > 0 ? (item.form_type === 'contract' ? item.value[0].num : item.value[0].name) : ''}}
+            <flexbox
+              v-else-if="item.form_type === 'customer' || item.form_type === 'business' || item.form_type === 'contract' || item.form_type === 'contacts'"
+              align="stretch"
+              class="b-cell-b">
+              <div class="b-cell-name">{{ item.name }}</div>
+              <div class="b-cell-value">{{ item.value&&item.value.length > 0 ? (item.form_type === 'contract' ? item.value[0].num : item.value[0].name) : '' }}
               </div>
             </flexbox>
 
-            <flexbox v-else-if="item.form_type === 'user'"
-                     align="stretch"
-                     class="b-cell-b">
-              <div class="b-cell-name">{{item.name}}</div>
+            <flexbox
+              v-else-if="item.form_type === 'user'"
+              align="stretch"
+              class="b-cell-b">
+              <div class="b-cell-name">{{ item.name }}</div>
               <div class="b-cell-value">
-                <flexbox :gutter="0"
-                         wrap="wrap"
-                         style="padding: 0px 10px 10px 0px;">
-                  <div v-for="(item, index) in item.value"
-                       :key="index">
-                    {{item.realname}}&nbsp;&nbsp;
+                <flexbox
+                  :gutter="0"
+                  wrap="wrap"
+                  style="padding: 0px 10px 10px 0px;">
+                  <div
+                    v-for="(item, index) in item.value"
+                    :key="index">
+                    {{ item.realname }}&nbsp;&nbsp;
                   </div>
                 </flexbox>
               </div>
             </flexbox>
 
-            <flexbox v-else-if="item.form_type === 'structure'"
-                     align="stretch"
-                     class="b-cell-b">
-              <div class="b-cell-name">{{item.name}}</div>
+            <flexbox
+              v-else-if="item.form_type === 'structure'"
+              align="stretch"
+              class="b-cell-b">
+              <div class="b-cell-name">{{ item.name }}</div>
               <div class="b-cell-value">
-                <flexbox :gutter="0"
-                         wrap="wrap"
-                         style="padding: 0px 10px 10px 0px;">
-                  <div v-for="(item, index) in item.value"
-                       :key="index">
-                    {{item.name}}&nbsp;&nbsp;
+                <flexbox
+                  :gutter="0"
+                  wrap="wrap"
+                  style="padding: 0px 10px 10px 0px;">
+                  <div
+                    v-for="(item, index) in item.value"
+                    :key="index">
+                    {{ item.name }}&nbsp;&nbsp;
                   </div>
                 </flexbox>
               </div>
             </flexbox>
 
-            <flexbox v-else-if="item.form_type === 'checkbox'"
-                     align="stretch"
-                     class="b-cell-b">
-              <div class="b-cell-name">{{item.name}}</div>
+            <flexbox
+              v-else-if="item.form_type === 'checkbox'"
+              align="stretch"
+              class="b-cell-b">
+              <div class="b-cell-name">{{ item.name }}</div>
               <div class="b-cell-value">
-                <flexbox :gutter="0"
-                         wrap="wrap"
-                         style="padding: 0px 10px 10px 0px;">
-                  <div v-for="(item, index) in item.value"
-                       :key="index">
-                    {{item}}&nbsp;&nbsp;
+                <flexbox
+                  :gutter="0"
+                  wrap="wrap"
+                  style="padding: 0px 10px 10px 0px;">
+                  <div
+                    v-for="(item, index) in item.value"
+                    :key="index">
+                    {{ item }}&nbsp;&nbsp;
                   </div>
                 </flexbox>
               </div>
             </flexbox>
 
-            <flexbox v-else-if="item.form_type === 'file'"
-                     align="stretch"
-                     class="b-cell-b">
-              <div class="b-cell-name">{{item.name}}</div>
+            <flexbox
+              v-else-if="item.form_type === 'file'"
+              align="stretch"
+              class="b-cell-b">
+              <div class="b-cell-name">{{ item.name }}</div>
               <div class="b-cell-value">
-                <flexbox class="f-item"
-                         v-for="(file, index) in item.value"
-                         :key="index">
-                  <img class="f-img"
-                       src="@/assets/img/relevance_file.png" />
-                  <div class="f-name">{{file.name.length > 15 ? (file.name.substring(0, 15) + '...'): file.name+'('+file.size+')'}}</div>
-                  <el-button type="text"
-                             @click.native="handleFile('preview', item, index)">预览</el-button>
-                  <el-button type="text"
-                             @click.native="handleFile('download', file, index)">下载</el-button>
+                <flexbox
+                  v-for="(file, index) in item.value"
+                  :key="index"
+                  class="f-item">
+                  <img
+                    class="f-img"
+                    src="@/assets/img/relevance_file.png" >
+                  <div class="f-name">{{ file.name.length > 15 ? (file.name.substring(0, 15) + '...'): file.name+'('+file.size+')' }}</div>
+                  <el-button
+                    type="text"
+                    @click.native="handleFile('preview', item, index)">预览</el-button>
+                  <el-button
+                    type="text"
+                    @click.native="handleFile('download', file, index)">下载</el-button>
                 </flexbox>
               </div>
             </flexbox>
 
-            <flexbox v-else
-                     align="stretch"
-                     class="b-cell-b">
-              <div class="b-cell-name">{{item.name}}</div>
-              <div class="b-cell-value">{{item.value}}</div>
+            <flexbox
+              v-else-if="item.form_type === 'floatnumber'"
+              align="stretch"
+              class="b-cell-b">
+              <div class="b-cell-name">{{ item.name }}</div>
+              <div class="b-cell-value">{{ moneyFormat(item.value) }}</div>
+            </flexbox>
+
+            <flexbox
+              v-else
+              align="stretch"
+              class="b-cell-b">
+              <div class="b-cell-name">{{ item.name }}</div>
+              <div class="b-cell-value">{{ item.value }}</div>
             </flexbox>
           </flexbox-item>
         </flexbox>
       </sections>
     </div>
-    <map-view v-if="showMapView"
-              :title="mapViewInfo.title"
-              :lat="mapViewInfo.lat"
-              :lng="mapViewInfo.lng"
-              @hidden="showMapView=false"></map-view>
+    <map-view
+      v-if="showMapView"
+      :title="mapViewInfo.title"
+      :lat="mapViewInfo.lat"
+      :lng="mapViewInfo.lng"
+      @hidden="showMapView=false"/>
   </div>
 </template>
 
@@ -144,21 +180,21 @@ import { filedGetField } from '@/api/customermanagement/common'
 import { getDateFromTimestamp } from '@/utils'
 import moment from 'moment'
 import MapView from '@/components/MapView' // 地图详情
-import { downloadFile } from '@/utils'
+import { downloadFile, moneyFormat } from '@/utils'
 
 export default {
   /** 客户管理 的 基本信息*/
-  name: 'c-r-m-base-info',
+  name: 'CRMBaseInfo',
   components: {
     Sections,
     MapView
   },
-  mixins: [loading],
   filters: {
     addressShow: function(list) {
       return list ? list.join(' ') : ''
     }
   },
+  mixins: [loading],
   props: {
     /** 模块ID */
     id: [String, Number],
@@ -166,11 +202,6 @@ export default {
     crmType: {
       type: String,
       default: ''
-    }
-  },
-  watch: {
-    id: function(val) {
-      this.getBaseInfo()
     }
   },
   data() {
@@ -181,6 +212,11 @@ export default {
     }
   },
   computed: {},
+  watch: {
+    id: function(val) {
+      this.getBaseInfo()
+    }
+  },
   mounted() {
     this.getBaseInfo()
   },
@@ -251,6 +287,9 @@ export default {
       } else if (type === 'download') {
         downloadFile({ path: item.file_path, name: item.name })
       }
+    },
+    moneyFormat(val) {
+      return moneyFormat(val)
     }
   }
 }
@@ -281,6 +320,8 @@ export default {
     .b-cell-value {
       font-size: 13px;
       color: #333;
+      white-space: pre-wrap;
+      word-wrap: break-word;
     }
     .b-cell-foot {
       flex-shrink: 0;

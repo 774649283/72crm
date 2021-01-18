@@ -26,7 +26,7 @@ class Customer extends ApiCommon
     public function _initialize()
     {
         $action = [
-            'permission'=>['exceldownload'],
+            'permission'=>['exceldownload','setfollow', 'delete'],
             'allow'=>['']            
         ];
         Hook::listen('check_auth',$action);
@@ -51,7 +51,7 @@ class Customer extends ApiCommon
         $param = $this->param;
         $userInfo = $this->userInfo;
         $param['user_id'] = $userInfo['id']; 
-        $data = $customerModel->getDataList($param);       
+        $data = $customerModel->getDataList($param);
         return resultArray(['data' => $data]);
     }
 
@@ -63,6 +63,7 @@ class Customer extends ApiCommon
     public function pool()
     {
         $param = $this->param;
+        $param['action'] = 'pool';
         $data = model('Customer')->getDataList($param);
         return resultArray(['data' => $data]);
     }    
@@ -80,9 +81,6 @@ class Customer extends ApiCommon
         $userInfo = $this->userInfo;
         $param['create_user_id'] = $userInfo['id'];
         $param['owner_user_id'] = $userInfo['id'];
-        $param['deal_status'] = '未成交';
-        $param['deal_time'] = time();
-
         if ($res = $customerModel->createData($param)) {
             return resultArray(['data' => $res]);
         } else {
@@ -128,7 +126,7 @@ class Customer extends ApiCommon
      * @return
      */
     public function update()
-    {    
+    {
         $customerModel = model('Customer');
         $param = $this->param;
         $userInfo = $this->userInfo;
@@ -136,19 +134,7 @@ class Customer extends ApiCommon
         $data = $customerModel->getDataById($param['id']);
         if (!$data) {
             return resultArray(['error' => $customerModel->getError()]);
-        }
-        //数据权限判断
-        $userModel = new \app\admin\model\User();
-        $auth_user_ids = $userModel->getUserByPer('crm', 'customer', 'update');
-        //读写权限
-        $rwPre = $userModel->rwPre($userInfo['id'], $data['ro_user_id'], $data['rw_user_id'], 'update');     
-        //判断是否客户池数据
-        $wherePool = $customerModel->getWhereByPool();
-        $resPool = db('crm_customer')->alias('customer')->where(['customer_id' => $param['id']])->where($wherePool)->find();
-        if (!$resPool && !in_array($data['owner_user_id'],$auth_user_ids) && !$rwPre) {
-            header('Content-Type:application/json; charset=utf-8');
-            exit(json_encode(['code'=>102,'error'=>'无权操作']));
-        }        
+        }      
 
         $param['user_id'] = $userInfo['id'];
         if ($customerModel->updateDataById($param, $param['id'])) {
@@ -159,15 +145,28 @@ class Customer extends ApiCommon
     }
 
     /**
-     * 删除客户（逻辑删）
+     * 删除客户
      * @author Michael_xu
      * @param 
      * @return
      */
     public function delete()
     {
-        $customerModel = model('Customer');
         $param = $this->param;
+        // 是否客户池
+        if ($param['isSeas'] == 1) {
+            $permission = checkPerByAction('crm', 'customer', 'poolDelete');
+        } else {
+            $permission = checkPerByAction('crm', 'customer', 'delete');
+        }
+        if ($permission == false) {
+            return resultArray(['error' => '无权操作']);
+        }
+        $customerModel = model('Customer');
+        $userModel = new \app\admin\model\User();
+        $recordModel = new \app\admin\model\Record();
+        $fileModel = new \app\admin\model\File();
+        $actionRecordModel = new \app\admin\model\ActionRecord();
         if (!is_array($param['id'])) {
             $customer_id[] = $param['id'];
         } else {
@@ -177,7 +176,6 @@ class Customer extends ApiCommon
         $errorMessage = [];
 
         //数据权限判断
-        $userModel = new \app\admin\model\User();
         $auth_user_ids = $userModel->getUserByPer('crm', 'customer', 'delete');
         //判断是否客户池数据(客户池数据只有管理员可以删)
         $adminId = $userModel->getAdminId();
@@ -197,41 +195,45 @@ class Customer extends ApiCommon
                 $errorMessage[] = '名称为'.$data['name'].'的客户删除失败,错误原因：无权操作';
                 continue;
             }
-            //公海
-            if ($resPool && !in_array($data['owner_user_id'],$adminId)) {
-                $isDel = false;
-                $errorMessage[] = '名称为'.$data['name'].'的客户删除失败,错误原因：无权操作';
-                continue;
-            }
+            // 公海 (原逻辑，公海仅允许管理员删除，修改为授权，不再限制)
+            // if ($resPool && !in_array($data['owner_user_id'],$adminId)) {
+            //     $isDel = false;
+            //     $errorMessage[] = '名称为'.$data['name'].'的客户删除失败,错误原因：无权操作';
+            //     continue;
+            // }
             //有商机、合同、联系人则不能删除 
             $resBusiness = db('crm_business')->where(['customer_id' => $v])->find();
-            $resContract = db('crm_contract')->where(['customer_id' => $v])->find();
-            $resContacts = db('crm_contacts')->where(['customer_id' => $v])->find();
             if ($resBusiness) {
                 $isDel = false;
                 $errorMessage[] = '名称为'.$data['name'].'的客户删除失败,错误原因：客户下存在商机，不能删除';
                 continue;
-            }    
-            if ($resContract) {
-                $isDel = false;
-                $errorMessage[] = '名称为'.$data['name'].'的客户删除失败,错误原因：客户下存在合同，不能删除';
-                continue;
-            }   
+            } 
+            $resContacts = db('crm_contacts')->where(['customer_id' => $v])->find();
             if ($resContacts) {
                 $isDel = false;
                 $errorMessage[] = '名称为'.$data['name'].'的客户删除失败,错误原因：客户下存在联系人，不能删除';
                 continue;
             } 
+            $resContract = db('crm_contract')->where(['customer_id' => $v])->find();  
+            if ($resContract) {
+                $isDel = false;
+                $errorMessage[] = '名称为'.$data['name'].'的客户删除失败,错误原因：客户下存在合同，不能删除';
+                continue;
+            }            
             $delIds[] = $v;            
         }
         if ($delIds) {
-            $data = $customerModel->delDatas($delIds);
-            if (!$data) {
+            $delRes = $customerModel->delDatas($delIds);
+            if (!$delRes) {
                 return resultArray(['error' => $customerModel->getError()]);
             }
-            //删除操作记录
-            $actionRecordModel = new \app\admin\model\ActionRecord();
-            $res = $actionRecordModel->delDataById(['types' => 'crm_customer','action_id' => $delIds]);                    
+            //删除跟进记录
+            $recordModel->delDataByTypes('crm_customer',$delIds);
+            //删除关联附件
+            $fileModel->delRFileByModule('crm_customer',$delIds);
+            //删除关联操作记录
+            $actionRecordModel->delDataById(['types'=>'crm_customer','action_id'=>$delIds]);
+            actionLog($delIds,'','','');                    
         }
         if ($errorMessage) {
             return resultArray(['error' => $errorMessage]);
@@ -257,8 +259,9 @@ class Customer extends ApiCommon
         $businessModel = model('Business');
         $contractModel = model('Contract');
         $contactsModel = model('Contacts');
-        $settingModel = model('Setting');      
-        $userModel = new \app\admin\model\User();
+        $settingModel = model('Setting'); 
+        $customerConfigModel = model('CustomerConfig');     
+        $userModel = new \app\admin\model\User();      
 
         if (!$param['owner_user_id']) {
             return resultArray(['error' => '变更负责人不能为空']);
@@ -273,22 +276,37 @@ class Customer extends ApiCommon
         $data = [];
         $data['owner_user_id'] = $param['owner_user_id'];
         $data['update_time'] = time();
+        $data['follow'] = '待跟进';
 
         $ownerUserName = $userModel->getUserNameById($param['owner_user_id']);
         $errorMessage = [];
         foreach ($param['customer_id'] as $customer_id) {
             $customerInfo = db('crm_customer')->where(['customer_id' => $customer_id])->find();
-
             if (!$customerInfo) {
-                $errorMessage[] = 'id:为'.$customer_id.'的客户转移失败，错误原因：数据不存在；';
+                $errorMessage[] = '名称:为《'.$customerInfo['name'].'》的客户转移失败，错误原因：数据不存在；';
                 continue;
             }
             $resCustomer = true;
             //权限判断
-            if (!$customerModel->checkData($customer_id, $userInfo['id'])) {
+            if (!$customerModel->checkData($customer_id)) {
                 $errorMessage[] = $customerInfo['name'].'转移失败，错误原因：无权限；';
                 continue;
             }
+            //拥有客户数上限检测
+            if (!$customerConfigModel->checkData($param['owner_user_id'],1)) {
+                $errorMessage[] = $customerInfo['name'].'转移失败，错误原因：'.$customerConfigModel->getError();
+                continue;
+            }
+
+            //团队成员
+            $teamData = [];
+            $teamData['type'] = $type; //权限 1只读2读写
+            $teamData['user_id'] = [$customerInfo['owner_user_id']]; //协作人
+            $teamData['types'] = 'crm_customer'; //类型
+            $teamData['types_id'] = $customer_id; //类型ID
+            $teamData['is_del'] = ($is_remove == 1) ? 1 : '';
+            $res = $settingModel->createTeamData($teamData);            
+
             $resCustomer = db('crm_customer')->where(['customer_id' => $customer_id])->update($data);
             if (!$resCustomer) {
                 $errorMessage[] = $customerInfo['name'].'转移失败，错误原因：数据出错；';
@@ -330,15 +348,7 @@ class Customer extends ApiCommon
                         continue;                        
                     }
                 }                
-            }
-
-            $teamData = [];
-            $teamData['type'] = $type; //权限 1只读2读写
-            $teamData['user_id'] = [$customerInfo['owner_user_id']]; //协作人
-            $teamData['types'] = 'crm_customer'; //类型
-            $teamData['types_id'] = $customer_id; //类型ID
-            $teamData['is_del'] = ($is_remove == 1) ? 1 : '';
-            $res = $settingModel->createTeamData($teamData);          
+            }          
             //修改记录
             updateActionLog($userInfo['id'], 'crm_customer', $customer_id, '', '', '将客户转移给：'.$ownerUserName);        
         }
@@ -350,7 +360,7 @@ class Customer extends ApiCommon
     } 
 
     /**
-     * 客户放入公海(负责人至为0)
+     * 客户放入公海(负责人置为0)
      * @author Michael_xu
      * @param 
      * @return
@@ -373,30 +383,26 @@ class Customer extends ApiCommon
             $customerInfo = [];
             $customerInfo = db('crm_customer')->where(['customer_id' => $customer_id])->find();
             if (!$customerInfo) {
-                $errorMessage[] = 'id:为'.$customer_id.'的客户放入公海失败，错误原因：数据不存在；';
+                $errorMessage[] = '名称:为《'.$customerInfo['name'].'》的客户放入公海失败，错误原因：数据不存在；';
                 continue;
             }
             //权限判断
-            if (!$customerModel->checkData($customer_id, $userInfo['id'])) {
+            if (!$customerModel->checkData($customer_id)) {
                 $errorMessage[] = '"'.$customerInfo['name'].'"放入公海失败，错误原因：无权限';
                 continue;
             }
+            //将团队成员全部清除
+            $data['ro_user_id'] = '';
+            $data['rw_user_id'] = '';
             $resCustomer = db('crm_customer')->where(['customer_id' => $customer_id])->update($data);
             if (!$resCustomer) {
                 $errorMessage[] = '"'.$customerInfo['name'].'"放入公海失败，错误原因：数据出错；';
                 continue;
             }
+            //联系人负责人清除
+            db('crm_contacts')->where(['customer_id' => $customer_id])->update(['owner_user_id' => 0]);
             //修改记录
-            updateActionLog($userInfo['id'], 'crm_customer', $customer_id, '', '', '将客户放入公海');
-            //将原负责人转为团队普通成员
-            $teamParam = [];
-            $teamParam['user_id'] = $customerInfo['owner_user_id'];
-            $teamParam['types'] = 'crm_customer';
-            $teamParam['types_id'] = $customer_id;
-            $teamParam['type'] = 1; //只读
-            $teamParam['owner_user_id'] = $userInfo['id'];
-            $teamParam['is_del'] = 3;
-            $settingModel->createTeamData($teamParam);              
+            updateActionLog($userInfo['id'], 'crm_customer', $customer_id, '', '', '将客户放入公海');              
         }
         if (!$errorMessage) {
             return resultArray(['data' => '操作成功']);
@@ -416,6 +422,7 @@ class Customer extends ApiCommon
         $param = $this->param;
         $userInfo = $this->userInfo;
         $customerModel = model('Customer');
+        $customerConfigModel = model('CustomerConfig'); 
         $is_lock = ((int)$param['is_lock'] == 2) ? (int)$param['is_lock'] : 1;
         $lock_name = ($is_lock == 2) ? '解锁' : '锁定';
         if (!$param['customer_id'] || !is_array($param['customer_id'])) {
@@ -429,14 +436,24 @@ class Customer extends ApiCommon
             $customerInfo = [];
             $customerInfo = $customerModel->getDataById($customer_id);
             if (!$customerInfo) {
-                $errorMessage[] = 'id:为'.$customer_id.'的客户'.$lock_name.'失败，错误原因：数据不存在；';
+                $errorMessage[] = '名称:为《'.$customerInfo['name'].'》的客户'.$lock_name.'失败，错误原因：数据不存在；';
                 continue;
             }
             //权限判断
-            if (!$customerModel->checkData($customer_id, $userInfo['id'])) {
+            if (!$customerModel->checkData($customer_id)) {
                 $errorMessage[] = $customerInfo['name'].$lock_name.'失败，错误原因：无权限';
                 continue;
             }
+            //锁定上限检测
+            if ($is_lock == 1 && !$customerConfigModel->checkData($customerInfo['owner_user_id'],2)) {
+                $errorMessage[] = $customerInfo['name'].$lock_name.'失败，错误原因：'.$customerConfigModel->getError();
+                continue;                
+            } 
+            //已成交客户，锁定，提示无需锁定
+            if ($customerInfo['deal_status'] == '已成交' && $is_lock == 1) {
+                $errorMessage[] = $customerInfo['name'].$lock_name.'失败，错误原因：已成交状态，无需锁定';
+                continue;                 
+            }            
             $resCustomer = db('crm_customer')->where(['customer_id' => $customer_id])->update($data);
             if (!$resCustomer) {
                 $errorMessage[] = $customerInfo['name'].$lock_name.'失败，错误原因：数据出错；';
@@ -462,6 +479,7 @@ class Customer extends ApiCommon
         $param = $this->param;
         $userInfo = $this->userInfo;
         $customerModel = model('Customer');
+        $customerConfigModel = model('CustomerConfig');
 
         $customer_ids = $param['customer_id'];
         if (!$customer_ids || !is_array($customer_ids)) {
@@ -477,15 +495,26 @@ class Customer extends ApiCommon
                 $errorMessage[] = '客户《'.$dataName.'》领取失败，错误原因：非公海数据无权操作；';
                 continue;
             }
+            //拥有客户数上限检测
+            if (!$customerConfigModel->checkData($userInfo['id'],1)) {
+                $errorMessage[] = '客户《'.$dataName.'》领取失败，错误原因：'.$customerConfigModel->getError();
+                continue;
+            }           
             $data = [];
             $data['owner_user_id'] = $userInfo['id'];
             $data['update_time'] = time();
             $data['deal_time'] = time();
+            $data['follow'] = '待跟进';
+            //将团队成员全部清除
+            $data['ro_user_id'] = '';
+            $data['rw_user_id'] = '';            
             $resCustomer = db('crm_customer')->where(['customer_id' => $v])->update($data);
             if (!$resCustomer) {
                 $errorMessage[] = '客户《'.$dataName.'》领取失败，错误原因：数据出错；';
                 continue;
             }
+            //联系人领取
+            db('crm_contacts')->where(['customer_id' => $v])->update(['owner_user_id' => $userInfo['id']]);
             //修改记录
             updateActionLog($userInfo['id'], 'crm_customer', $v, '', '', '领取了客户');                           
         }
@@ -508,6 +537,7 @@ class Customer extends ApiCommon
         $userInfo = $this->userInfo;
         $customerModel = model('Customer');
         $userModel = new \app\admin\model\User();
+        $customerConfigModel = model('CustomerConfig');
 
         $customer_ids = $param['customer_id'];
         $owner_user_id = $param['owner_user_id'];
@@ -529,14 +559,24 @@ class Customer extends ApiCommon
                 $errorMessage[] = '客户《'.$dataName.'》分配失败，错误原因：非公海数据无权操作；';
                 continue;
             }
+            //拥有客户数上限检测
+            if (!$customerConfigModel->checkData($owner_user_id,1)) {
+                $errorMessage[] = '客户《'.$dataName.'》分配失败，错误原因：'.$customerConfigModel->getError();
+                continue;                
+            }
             $data = [];
             $data['owner_user_id'] = $owner_user_id;
             $data['update_time'] = time();
             $data['deal_time'] = time();
+            $data['follow'] = '待跟进';
+            //将团队成员全部清除
+            $data['ro_user_id'] = '';
+            $data['rw_user_id'] = '';             
             $resCustomer = db('crm_customer')->where(['customer_id' => $v])->update($data);
             if (!$resCustomer) {
                 $errorMessage[] = '客户《'.$dataName.'》分配失败，错误原因：数据出错；';
             }
+            db('crm_contacts')->where(['customer_id' => $v])->update(['owner_user_id' => $owner_user_id]);
             //修改记录
             updateActionLog($userInfo['id'], 'crm_customer', $v, '', '', '将客户分配给：'.$ownerUserName);
             //站内信
@@ -571,176 +611,47 @@ class Customer extends ApiCommon
         $excelModel = new \app\admin\model\Excel();
         // 导出的字段列表
         $fieldModel = new \app\admin\model\Field();
-        $field_list = $fieldModel->getIndexFieldList('crm_customer', $userInfo['id']);
+        $field_list = $fieldModel->getIndexFieldConfig('crm_customer', $userInfo['id']);
         // 文件名
         $file_name = '5kcrm_customer_'.date('Ymd');
-        $param['pageType'] = 'all'; 
-        $excelModel->exportCsv($file_name, $field_list, function($list) use ($param){
-            $list = model('Customer')->getDataList($param);
-            return $list;
+
+        $model = model('Customer');
+        $temp_file = $param['temp_file'];
+        unset($param['temp_file']);
+        $page = $param['page'] ?: 1;
+        unset($param['page']);
+        unset($param['export_queue_index']);
+        return $excelModel->batchExportCsv($file_name, $temp_file, $field_list, $page, function($page, $limit) use ($model, $param, $field_list) {
+            $param['page'] = $page;
+            $param['limit'] = $limit;
+            $data = $model->getDataList($param);
+            $data['list'] = $model->exportHandle($data['list'], $field_list, 'customer');
+            return $data;
         });
     }
 
     /**
      * 客户导入模板下载
      * @author Michael_xu
-     * @param 
+     * @param string $save_path 本地保存路径     用于错误数据导出，在 Admin\Model\Excel::batchImportData()调用
      * @return
      */
-    public function excelDownload()
+    public function excelDownload($save_path = '')
     {
         $param = $this->param;
+        $userInfo = $this->userInfo;
         $excelModel = new \app\admin\model\Excel();
 
-        // 导出的字段列表
+        // 导入的字段列表
         $fieldModel = new \app\admin\model\Field();
         $fieldParam['types'] = 'crm_customer'; 
         $fieldParam['action'] = 'excel'; 
-        $customer_field_list = $fieldModel->field($fieldParam);
-        $contactsParam['types'] = 'crm_contacts'; 
-        // $contacts_field_list = $fieldModel->getDataList($contactsParam);       
-        $contacts_field_list = [];
-
-        //实例化主文件
-        vendor("phpexcel.PHPExcel");
-        vendor("phpexcel.PHPExcel.Writer.Excel5");
-        vendor("phpexcel.PHPExcel.Writer.Excel2007");
-        vendor("phpexcel.PHPExcel.IOFactory"); 
-
-        $objPHPExcel = new \phpexcel();
-        $objWriter = new \PHPExcel_Writer_Excel5($objPHPExcel);
-        $objWriter = new \PHPExcel_Writer_Excel2007($objPHPExcel);
-
-        //设置属性
-        $objProps = $objPHPExcel->getProperties();
-        $objProps->setCreator("5kcrm");
-        $objProps->setLastModifiedBy("5kcrm");
-        $objProps->setTitle("5kcrm");
-        $objProps->setSubject("5kcrm data");
-        $objProps->setDescription("5kcrm data");
-        $objProps->setKeywords("5kcrm data");
-        $objProps->setCategory("5kcrm");
-        $objPHPExcel->setActiveSheetIndex(0);
-        $objActSheet = $objPHPExcel->getActiveSheet();
-        $objActSheet->setTitle('悟空软件导入模板'.date('Y-m-d',time()));
-
-        //填充边框
-        $styleArray = [
-            'borders'=>[
-                'outline'=>[
-                    'style'=>\PHPExcel_Style_Border::BORDER_THICK, //设置边框
-                    'color' => ['argb' => '#F0F8FF'], //设置颜色
-                ],
-            ],
-        ];
-
-        $row = 1000;
-        $k = 0;
-        foreach ($customer_field_list as $field) {
-            $objActSheet->getColumnDimension($excelModel->stringFromColumnIndex($k))->setWidth(20); //设置单元格宽度
-            if ($field['form_type'] == 'address') {
-                for ($a=0; $a<=3; $a++){
-                    $address = array('所在省','所在市','所在县','街道信息');//如果是所在省的话
-                    // $objActSheet->getStyle($excelModel->stringFromColumnIndex($k).'2')->applyFromArray($styleArray);//填充样式
-                    $objActSheet->setCellValue($excelModel->stringFromColumnIndex($k).'2', $address[$a]);
-                    $k++;
-                }
-            } else {
-                if ($field['form_type'] == 'select' || $field['form_type'] == 'checkbox' || $field['form_type'] == 'radio') {
-                    // $setting = $field['setting'] ? explode(chr(10), $field['setting']) : [];
-                    $setting = $field['setting'] ? : [];
-                    $select_value = implode(',',$setting);
-                    if ($select_value) {
-                        //数据有效性 start
-                        $objValidation = $objActSheet->getCell($excelModel->stringFromColumnIndex($k).'3')->getDataValidation(); //这一句为要设置数据有效性的单元格
-                        $objValidation -> setType(\PHPExcel_Cell_DataValidation::TYPE_LIST)  
-                           -> setErrorStyle(\PHPExcel_Cell_DataValidation::STYLE_INFORMATION)  
-                           -> setAllowBlank(false)  
-                           -> setShowInputMessage(true)  
-                           -> setShowErrorMessage(true)  
-                           -> setShowDropDown(true)  
-                           -> setErrorTitle('输入的值有误')  
-                           -> setError('您输入的值不在下拉框列表内.')  
-                           -> setPromptTitle('--请选择--')  
-                           -> setFormula1('"'.$select_value.'"');
-                        //数据有效性  end            
-                    }
-                }
-                //检查该字段若必填，加上"*"
-                $field['name'] = sign_required($field['is_null'], $field['name']);
-                // $objActSheet->getStyle($excelModel->stringFromColumnIndex($k).'2')->applyFromArray($styleArray);//填充样式
-                $objActSheet->setCellValue($excelModel->stringFromColumnIndex($k).'2', $field['name']);
-                $k++;
-            }
-        }
-        $max_customer_column = $excelModel->stringFromColumnIndex($k-1);
-        $mark_customer = $excelModel->stringFromColumnIndex($k);   
-
-        $contacts_start_mark = $excelModel->stringFromColumnIndex($k+1).'1';
-        //联系人相关
-        if ($contacts_field_list) {
-            foreach ($contacts_field_list as $field) {
-                $objActSheet->getColumnDimension($excelModel->stringFromColumnIndex($k))->setWidth(20); //设置单元格宽度
-                if ($field['form_type'] == 'address') {
-                     for ($a=0; $a<=3; $a++){
-                         $address = array('所在省','所在市','所在县','街道信息');//如果是所在省的话
-                         // $objActSheet->getStyle($excelModel->stringFromColumnIndex($k).'2')->applyFromArray($styleArray);//填充样式
-                         $objActSheet->setCellValue($excelModel->stringFromColumnIndex($k).'2', $address[$a]);
-                         $k++;
-                     }
-                } elseif ($field['form_type'] != 'customer') {
-                    if ($field['form_type'] == 'select' || $field['form_type'] == 'checkbox' || $field['form_type'] == 'radio') {
-                        $setting = $field['setting'] ? : [];
-                        $select_value = implode(',',$setting);
-                        //数据有效性 start
-                        $objValidation = $objActSheet->getCell($excelModel->stringFromColumnIndex($k).'3')->getDataValidation(); //这一句为要设置数据有效性的单元格
-                        $objValidation -> setType(\PHPExcel_Cell_DataValidation::TYPE_LIST)  
-                           -> setErrorStyle(\PHPExcel_Cell_DataValidation::STYLE_INFORMATION)  
-                           -> setAllowBlank(false)  
-                           -> setShowInputMessage(true)  
-                           -> setShowErrorMessage(true)  
-                           -> setShowDropDown(true)  
-                           -> setErrorTitle('输入的值有误')  
-                           -> setError('您输入的值不在下拉框列表内.')  
-                           -> setPromptTitle('--请选择--')  
-                           -> setFormula1('"'.$select_value.'"');
-                        //数据有效性  end
-                    }                
-                     //检查该字段若必填，加上"*"
-                    $field['name'] = sign_required($field['is_null'], $field['name']);
-                    // $objActSheet->getStyle($excelModel->stringFromColumnIndex($k).'2')->applyFromArray($styleArray);//填充样式
-                    $objActSheet->setCellValue($excelModel->stringFromColumnIndex($k).'2', $field['name']);
-                    $k++;
-                }
-            }            
-        }
-        
-        $mark_contacts = $excelModel->stringFromColumnIndex($k-1);
-
-        $objActSheet->mergeCells('A1:'.$max_customer_column.'1');
-        // $objActSheet->mergeCells($mark_customer.'1:'.$mark_contacts.'1');
-        $objActSheet->getStyle('A1:'.$mark_customer.'1')->getAlignment()->setHorizontal(\PHPExcel_Style_Alignment::HORIZONTAL_CENTER); //水平居中
-        $objActSheet->getStyle('A1:'.$mark_customer.'1')->getAlignment()->setVertical(\PHPExcel_Style_Alignment::VERTICAL_CENTER); //垂直居中
-        $objActSheet->getRowDimension(1)->setRowHeight(28); //设置行高
-        $objActSheet->getStyle('A1')->getFont()->getColor()->setARGB('FFFF0000');
-        $objActSheet->getStyle('A1')->getAlignment()->setWrapText(true);
-        //设置单元格格式范围的字体、字体大小、加粗
-        $objActSheet->getStyle('A1:'.$mark_contacts.'1')->getFont()->setName("微软雅黑")->setSize(13)->getColor()->setARGB('#00000000');
-        //给单元格填充背景色
-        $objActSheet->getStyle('A1:'.$mark_contacts.'1')->getFill()->setFillType(\PHPExcel_Style_Fill::FILL_SOLID)->getStartColor()->setARGB('#ff9900');
-        $objActSheet->getStyle($contacts_start_mark)->getAlignment()->setWrapText(true);
-        $content = '客户信息（*代表必填项）';
-        $objActSheet->setCellValue('A1', $content);
-        // $objActSheet->setCellValue($mark_customer.'1', '联系人信息（*代表必填项）');
-        $objWriter = PHPExcel_IOFactory::createWriter($objPHPExcel, 'Excel5');
-        ob_end_clean();
-        header("Content-Type: application/vnd.ms-excel;");
-        header("Content-Disposition:attachment;filename=5kcrm_customer.xls");
-        header("Pragma:no-cache");
-        header("Expires:0");
-        $objWriter->save('php://output');
+        $field_list = $fieldModel->field($fieldParam);
+        // vdd($field_list);
+        $excelModel->excelImportDownload($field_list, 'crm_customer', $save_path);
     }
 
+    
     /**
      * 客户数据导入
      * @author Michael_xu
@@ -758,10 +669,178 @@ class Customer extends ApiCommon
         $param['deal_status'] = '未成交';
         $param['types'] = 'crm_customer';
         $file = request()->file('file');
-        $res = $excelModel->importExcel($file, $param);
+        // $res = $excelModel->importExcel($file, $param, $this);
+        $res = $excelModel->batchImportData($file, $param, $this);
         if (!$res) {
-            return resultArray(['error'=>$excelModel->getError()]);
+            return resultArray(['error' => $excelModel->getError()]);
         }
-        return resultArray(['data'=>'导入成功']);
-    }   
+        return resultArray(['data' => $excelModel->getError()]);
+    }
+
+    /**
+     * 客户标记为已跟进
+     * @author Michael_xu
+     * @param 
+     * @return
+     */
+    public function setFollow(){
+        $param = $this->param;
+        $customerIds = $param['id'] ? : [];
+        if (!$customerIds || !is_array($customerIds)) {
+            return resultArray(['error'=>'参数错误']);
+        }
+        $data['follow'] = '已跟进';
+        $data['update_time'] = time();
+        $res = db('crm_customer')->where(['customer_id' => ['in',$customerIds]])->update($data);
+        if (!$res) {
+            return resultArray(['error'=>'操作失败，请重试']);
+        }
+        return resultArray(['data'=>'跟进成功']);        
+    }
+
+    /**
+     * 置顶 / 取消置顶
+     * @return [type] [description]
+     */
+    public function top()
+    {
+        $param = $this->param;
+        $userInfo = $this->userInfo;
+        $param['create_role_id'] = $userInfo['id'];
+        $param['top_time'] = time();
+
+        $top_id = Db::name('crm_top')->where(['module' => ['eq',$param['module']],'create_role_id' => ['eq',$userInfo['id']],'module_id' => ['eq',$param['module_id']]])->column('top_id');
+        if ($top_id) {
+            if ($res = Db::name('crm_top')->where('top_id',$top_id[0])->update($param)) {
+                return resultArray(['data' => $res]);
+            } else {
+                return resultArray(['error' => Db::name('crm_top')->getError()]);
+            }
+        } else {
+            if ($res =  Db::name('crm_top')->data($param)->insert()) {
+                return resultArray(['data' => $res]);
+            } else {
+                return resultArray(['error' => $customerModel->getError()]);
+            }
+        }
+    }
+
+    /**
+     * 客户公海导出
+     * @author Michael_xu
+     * @param 
+     * @return
+     */
+    public function poolExcelExport()
+    {
+        $param = $this->param;
+        $userInfo = $this->userInfo;
+        $param['user_id'] = $userInfo['id'];
+        if ($param['customer_id']) {
+           $param['customer_id'] = ['condition' => 'in','value' => $param['customer_id'],'form_type' => 'text','name' => ''];
+           $param['is_excel'] = 1;
+        }
+        $excelModel = new \app\admin\model\Excel();
+        // 导出的字段列表
+        $fieldModel = new \app\admin\model\Field();
+        $field_list = $fieldModel->getIndexFieldList('crm_customer', $userInfo['id']);
+        $field_list = array_filter($field_list, function ($val) {
+            return $val['field'] != 'owner_user_id';
+        });
+        // 文件名
+        $file_name = '5kcrm_customer_'.date('Ymd');
+        $param['action'] = 'pool';
+
+        $model = model('Customer');
+        $temp_file = $param['temp_file'];
+        unset($param['temp_file']);
+        $page = $param['page'] ?: 1;
+        unset($param['page']);
+        unset($param['export_queue_index']);
+        return $excelModel->batchExportCsv($file_name, $temp_file, $field_list, $page, function($page, $limit) use ($model, $param) {
+            $param['page'] = $page;
+            $param['limit'] = $limit;
+            $data = $model->getDataList($param);
+            $data['list'] = array_map(function ($val) {
+                $val['create_time'] = date('Y-m-d H:i:s', $val['create_time']);
+                $val['update_time'] = date('Y-m-d H:i:s', $val['update_time']);
+                $val['next_time'] = date('Y-m-d H:i:s', $val['next_time']);
+                $val['create_user_id'] = $val['create_user_id_info']['realname'];
+                $val['owner_user_id'] = $val['owner_user_id_info']['realname'];
+                return $val;
+            }, $data['list']);
+            return $data;
+        });
+
+        // $param['pageType'] = 'all'; 
+        // $excelModel->exportCsv($file_name, $field_list, function($list) use ($param){
+        //     $list = model('Customer')->getDataList($param);
+        //     return $list;
+        // });
+    } 
+
+    /**
+     * 客户成交状态
+     * @author Michael_xu
+     * @param status 1已成交,2未成交
+     * @return
+     */  
+    public function deal_status()
+    {
+        $param = $this->param;
+        $userInfo = $this->userInfo;
+        $statusArr = ['1' => '已成交','2' => '未成交'];
+        $statusList = ['1','2'];
+        if (!$param['customer_id'] || !in_array($param['status'],$statusList)) {
+            return resultArray(['error' => '参数错误']);
+        }
+        $customerModel = model('Customer');
+        $customerConfigModel = model('CustomerConfig');
+        $userModel = new \app\admin\model\User();
+        $customer_ids = $param['customer_id'];
+        if (!is_array($customer_ids) || !$customer_ids) {
+            $customer_ids[] = $customer_ids;
+        }
+        $data = [];
+        $data['update_time'] = time();
+        $data['deal_time'] = time();
+        $data['deal_status'] = $statusArr[$param['status']];        
+        $errorMessage = [];
+        foreach ($customer_ids as $customer_id) {
+            $dataInfo = [];
+            $dataInfo = db('crm_customer')->where(['customer_id' => $customer_id])->field('owner_user_id,deal_status,name')->find();
+            //权限判断
+            if (!$customerModel->checkData($customer_id, 1)) {
+                $errorMessage[] = '名称:为《'.$dataInfo['name'].'》的客户更改失败，错误原因：'.$customerModel->getError();
+                continue;
+            }
+            $owner_user_id = $dataInfo['owner_user_id'];;
+            if (!$owner_user_id) {
+                $errorMessage[] = '名称:为《'.$dataInfo['name'].'》的客户更改失败，错误原因：公海数据无权操作';
+                continue;                
+            }
+            //拥有客户数上限检测
+            if ($statusArr[$param['status']] == '未成交' && $dataInfo['deal_status'] == '已成交') {
+                if (!$customerConfigModel->checkData($owner_user_id,1,1)) {
+                    $errorMessage[] = '名称:为《'.$dataInfo['name'].'》的客户更改失败，错误原因：'.$customerConfigModel->getError();
+                    continue;
+                }             
+            }
+            if ($statusArr[$param['status']] == '已成交') {
+                $data['is_lock'] = 0; 
+            }
+            $res = db('crm_customer')->where(['customer_id' => $customer_id])->update($data);
+            if (!$res) {
+                $errorMessage[] = '名称:为《'.$dataInfo['name'].'》的客户更改失败，错误原因：操作失败，请重试！';
+                continue;
+            }
+            //修改记录
+            updateActionLog($userInfo['id'], 'crm_customer', $customer_id, ['deal_status' => $dataInfo['deal_status']], ['deal_status' => $data['deal_status']]);
+        }
+        if (!$errorMessage) {   
+            return resultArray(['data' => '操作成功']);
+        } else {
+            return resultArray(['error' => $errorMessage]);
+        }        
+    } 
 }

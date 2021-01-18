@@ -6,7 +6,7 @@ export default {
     }
   },
   watch: {
-    value: function (val) {
+    value: function(val) {
       this.dataValue = val
     }
   },
@@ -32,11 +32,17 @@ export default {
 
   methods: {
     // 输入的值
-    valueChange(val) {
-      this.$emit('value-change', {
+    valueChange(val, planList = []) {
+      const data = {
         index: this.index,
         value: val
-      })
+      }
+      if (planList.length > 0) {
+        data.plan = planList.filter(item => {
+          return item.plan_id == this.dataValue
+        })[0]
+      }
+      this.$emit('value-change', data)
     }
   }
 

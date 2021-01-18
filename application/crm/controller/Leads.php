@@ -26,7 +26,7 @@ class Leads extends ApiCommon
     public function _initialize()
     {
         $action = [
-            'permission'=>['exceldownload'],
+            'permission'=>['exceldownload','setfollow'],
             'allow'=>['']            
         ];
         Hook::listen('check_auth',$action);
@@ -123,17 +123,16 @@ class Leads extends ApiCommon
     public function update()
     {    
         $leadsModel = model('Leads');
-        $userModel = new \app\admin\model\User();
         $param = $this->param;
         $userInfo = $this->userInfo;
         $param['user_id'] = $userInfo['id'];
-        //判断权限
-        $data = $leadsModel->getDataById($param['id']);
-        $auth_user_ids = $userModel->getUserByPer('crm', 'leads', 'update');
-        if (!in_array($data['owner_user_id'],$auth_user_ids)) {
-            header('Content-Type:application/json; charset=utf-8');
-            exit(json_encode(['code'=>102,'error'=>'无权操作']));
-        }         
+        // //判断权限
+        // $data = $leadsModel->getDataById($param['id']);
+        // $auth_user_ids = $userModel->getUserByPer('crm', 'leads', 'update');
+        // if (!in_array($data['owner_user_id'],$auth_user_ids)) {
+        //     header('Content-Type:application/json; charset=utf-8');
+        //     exit(json_encode(['code'=>102,'error'=>'无权操作']));
+        // }         
         if ($leadsModel->updateDataById($param, $param['id'])) {
             return resultArray(['data' => '编辑成功']);
         } else {
@@ -149,9 +148,11 @@ class Leads extends ApiCommon
      */
     public function delete()
     {
+        $param = $this->param; 
         $leadsModel = model('Leads');
-        $param = $this->param;        
-
+        $recordModel = new \app\admin\model\Record();
+        $fileModel = new \app\admin\model\File();
+        $actionRecordModel = new \app\admin\model\ActionRecord();
         if (!is_array($param['id'])) {
             $leads_id[] = $param['id'];
         } else {
@@ -183,10 +184,14 @@ class Leads extends ApiCommon
             $data = $leadsModel->delDatas($delIds);
             if (!$data) {
                 return resultArray(['error' => $leadsModel->getError()]);
-            }
-            //删除操作记录
-            $actionRecordModel = new \app\admin\model\ActionRecord();
-            $res = $actionRecordModel->delDataById(['types' => 'crm_leads','action_id' => $delIds]);            
+            } 
+            //删除跟进记录
+            $recordModel->delDataByTypes('crm_leads',$delIds);   
+            //删除关联附件
+            $fileModel->delRFileByModule('crm_leads',$delIds);
+            //删除关联操作记录
+            $actionRecordModel->delDataById(['types'=>'crm_leads','action_id'=>$delIds]);         
+            actionLog($delIds,'','','');           
         }
         if ($errorMessage) {
             return resultArray(['error' => $errorMessage]);
@@ -205,6 +210,7 @@ class Leads extends ApiCommon
     {
         $leadsModel = model('Leads');
         $customerModel = model('Customer');
+        $fieldModel = new \app\admin\model\Field();
         $param = $this->param;
         $userInfo = $this->userInfo;
         $userModel = new \app\admin\model\User();
@@ -217,21 +223,26 @@ class Leads extends ApiCommon
         foreach ($param['leads_id'] as $leads_id) {
             $data = [];
             $leadsInfo = db('crm_leads')->where(['leads_id' => $leads_id])->find();
-            $data = $leadsInfo ? : [];
+            //字段对照关系处理
+            $data = $fieldModel->getRelevantData('crm_leads',$leadsInfo) ? : [];
             $data['create_user_id'] = $userInfo['id'];
             $data['owner_user_id'] = $userInfo['id'];
+            $data['deal_status'] = '未成交'; 
+            $data['deal_time'] = time();            
+            $data['create_time'] = time();            
+            $data['update_time'] = time();            
             //权限判断
             if (!$leadsInfo) {
-                $errorMessage[] = 'id:为'.$leads_id.'的线索转化失败，错误原因：数据不存在；';
+                $errorMessage[] = '线索《'.$leadsInfo['name'].'》转化失败，错误原因：数据不存在；';
                 continue;                
             }
             if (!in_array($leadsInfo['owner_user_id'],$authIds)) {
-                $errorMessage[] = $leadsInfo['name'].'"转化失败，错误原因：无权限；';
+                $errorMessage[] = '线索《'.$leadsInfo['name'].'》转化失败，错误原因：无权限；';
                 continue;
             }
             $resCustomer = $customerModel->createData($data);
             if (!$resCustomer) {
-                $errorMessage[] = $leadsInfo['name'].'"转化失败，错误原因：数据出错；';
+                $errorMessage[] = '线索《'.$leadsInfo['name'].'》转化失败，错误原因：'.$customerModel->getError();
                 continue;
             }
             $leadsData = [];
@@ -239,7 +250,7 @@ class Leads extends ApiCommon
             $leadsData['customer_id'] = $resCustomer['customer_id'];
             db('crm_leads')->where(['leads_id' => $leads_id])->update($leadsData);
             //修改记录
-            updateActionLog($userInfo['id'], 'crm_customer', $resCustomer['customer_id'], '', '', '将线索"'.$leadsInfo['name'].'"转化为客户');               
+            updateActionLog($userInfo['id'], 'crm_customer', $resCustomer['customer_id'], '', '', '将线索"'.$leadsInfo['name'].'转化为客户');               
         }
         if (!$errorMessage) {
             return resultArray(['data' => '转化成功']);
@@ -278,13 +289,14 @@ class Leads extends ApiCommon
         $data = [];
         $data['owner_user_id'] = $param['owner_user_id'];
         $data['update_time'] = time();
+        $data['follow'] = '待跟进';
 
         $ownerUserName = $userModel->getUserNameById($param['owner_user_id']);
         $errorMessage = [];
         foreach ($param['leads_id'] as $leads_id) {
             $leadsInfo = $leadsModel->getDataById($leads_id);
             if (!$leadsInfo) {
-                $errorMessage[] = 'id:为'.$leads_id.'的线索转移失败，错误原因：数据不存在；';
+                $errorMessage[] = '名称:为《'.$leadsInfo['name'].'》的线索转移失败，错误原因：数据不存在；';
                 continue;
             }
             //权限判断
@@ -310,10 +322,10 @@ class Leads extends ApiCommon
     /**
      * 线索导入模板
      * @author Michael_xu
-     * @param 
+     * @param string $save_path 本地保存路径     用于错误数据导出，在 Admin\Model\Excel::importExcel()调用
      * @return
      */ 
-    public function excelDownload() 
+    public function excelDownload($save_path = '') 
     {
         $param = $this->param;
         $userInfo = $this->userInfo;
@@ -325,7 +337,7 @@ class Leads extends ApiCommon
         $fieldParam['action'] = 'excel'; 
         $field_list = $fieldModel->field($fieldParam);        
         // $field_list = $fieldModel->getIndexFieldList('crm_leads', $userInfo['id']);
-        $res = $excelModel->excelImportDownload($field_list, 'crm_leads');
+        $excelModel->excelImportDownload($field_list, 'crm_leads', $save_path);
     }  
 
     /**
@@ -347,13 +359,22 @@ class Leads extends ApiCommon
         $excelModel = new \app\admin\model\Excel();
         // 导出的字段列表
         $fieldModel = new \app\admin\model\Field();
-        $field_list = $fieldModel->getIndexFieldList('crm_leads', $userInfo['id']);
+        $field_list = $fieldModel->getIndexFieldConfig('crm_leads', $userInfo['id']);
         // 文件名
         $file_name = '5kcrm_leads_'.date('Ymd');
-        $param['pageType'] = 'all'; 
-        $excelModel->exportCsv($file_name, $field_list, function($page) use ($param){
-            $list = model('Leads')->getDataList($param);
-            return $list;
+
+        $model = model('Leads');
+        $temp_file = $param['temp_file'];
+        unset($param['temp_file']);
+        $page = $param['page'] ?: 1;
+        unset($param['page']);
+        unset($param['export_queue_index']);
+        return $excelModel->batchExportCsv($file_name, $temp_file, $field_list, $page, function($page, $limit) use ($model, $field_list, $param) {
+            $param['page'] = $page;
+            $param['limit'] = $limit;
+            $data = $model->getDataList($param);
+            $data['list'] = $model->exportHandle($data['list'], $field_list, 'leads');
+            return $data;
         });
     } 
 
@@ -372,10 +393,32 @@ class Leads extends ApiCommon
         $param['create_user_id'] = $userInfo['id'];
         $param['owner_user_id'] = $param['owner_user_id'] ? : $userInfo['id'];
         $file = request()->file('file');
-        $res = $excelModel->importExcel($file, $param);
+        // $res = $excelModel->importExcel($file, $param);
+        $res = $excelModel->batchImportData($file, $param, $this);
         if (!$res) {
             return resultArray(['error'=>$excelModel->getError()]);
         }
-        return resultArray(['data'=>'导入成功']);
-    }          
+        return resultArray(['data' => $excelModel->getError()]);
+    }
+
+    /**
+     * 线索标记为已跟进
+     * @author Michael_xu
+     * @param 
+     * @return
+     */
+    public function setFollow(){
+        $param = $this->param;
+        $leadsIds = input('post.id/a') ? : [];
+        if (!$leadsIds || !is_array($leadsIds)) {
+            return resultArray(['error'=>'参数错误']);
+        }
+        $data['follow'] = '已跟进';
+        $data['update_time'] = time();
+        $res = db('crm_leads')->where(['leads_id' => ['in',$leadsIds]])->update($data);
+        if (!$res) {
+            return resultArray(['error'=>'操作失败，请重试']);
+        }
+        return resultArray(['data'=>'跟进成功']);        
+    }            
 }

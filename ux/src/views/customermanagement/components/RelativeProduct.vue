@@ -1,34 +1,36 @@
 <template>
-  <div class="rc-cont"
-       v-empty="nopermission"
-       xs-empty-icon="nopermission"
-       xs-empty-text="暂无权限">
-    <flexbox class="rc-head"
-             direction="row-reverse">
-    </flexbox>
-    <el-table :data="list"
-              :height="tableHeight"
-              stripe
-              style="width: 100%;border: 1px solid #E6E6E6;"
-              :header-cell-style="headerRowStyle"
-              :cell-style="cellStyle"
-              @row-click="handleRowClick">
-      <el-table-column v-for="(item, index) in fieldList"
-                       :key="index"
-                       show-overflow-tooltip
-                       :prop="item.prop"
-                       :formatter="fieldFormatter"
-                       :label="item.label">
-      </el-table-column>
+  <div
+    v-empty="nopermission"
+    class="rc-cont"
+    xs-empty-icon="nopermission"
+    xs-empty-text="暂无权限">
+    <flexbox
+      class="rc-head"
+      direction="row-reverse"/>
+    <el-table
+      :data="list"
+      :height="tableHeight"
+      :header-cell-style="headerRowStyle"
+      :cell-style="cellStyle"
+      stripe
+      style="width: 100%;border: 1px solid #E6E6E6;"
+      @row-click="handleRowClick">
+      <el-table-column
+        v-for="(item, index) in fieldList"
+        :key="index"
+        :prop="item.prop"
+        :formatter="fieldFormatter"
+        :label="item.label"
+        show-overflow-tooltip/>
     </el-table>
     <flexbox class="handle-footer">
-      <div class="discount-title">整单折扣（%）：<span class="discount-title-value">{{totalInfo.discount_rate}}</span></div>
-      <div class="total-info">已选中产品：<span class="info-yellow">{{list.length}}</span>&nbsp;种&nbsp;&nbsp;总金额：<span class="info-yellow">{{totalInfo.total_price}}</span>&nbsp;元</div>
+      <div class="discount-title">整单折扣（%）：<span class="discount-title-value">{{ totalInfo.discount_rate }}</span></div>
+      <div class="total-info">已选中产品：<span class="info-yellow">{{ list.length }}</span>&nbsp;种&nbsp;&nbsp;总金额：<span class="info-yellow">{{ totalInfo.total_price }}</span>&nbsp;元</div>
     </flexbox>
-    <c-r-m-full-screen-detail :visible.sync="showFullDetail"
-                              crmType="product"
-                              :id="productId">
-    </c-r-m-full-screen-detail>
+    <c-r-m-full-screen-detail
+      :visible.sync="showFullDetail"
+      :id="productId"
+      crm-type="product"/>
   </div>
 </template>
 
@@ -36,33 +38,14 @@
 import loading from '../mixins/loading'
 import { crmBusinessProduct } from '@/api/customermanagement/business'
 import { crmContractProduct } from '@/api/customermanagement/contract'
+import { moneyFormat } from '@/utils'
 
 export default {
-  name: 'relative-product', //相关产品  可能再很多地方展示 放到客户管理目录下
+  name: 'RelativeProduct', // 相关产品  可能再很多地方展示 放到客户管理目录下
   components: {
     CRMFullScreenDetail: () => import('./CRMFullScreenDetail.vue')
   },
-  computed: {},
   mixins: [loading],
-  data() {
-    return {
-      nopermission: false,
-      list: [],
-      fieldList: [],
-      tableHeight: '400px',
-      showFullDetail: false,
-      productId: '', // 查看全屏产品详情的 ID
-      totalInfo: { total_price: '0.00', discount_rate: '0.00' },
-      /** 格式化规则 */
-      formatterRules: {}
-    }
-  },
-  watch: {
-    id: function(val) {
-      this.list = []
-      this.getDetail()
-    }
-  },
   props: {
     /** 模块ID */
     id: [String, Number],
@@ -82,6 +65,26 @@ export default {
     isSeas: {
       type: Boolean,
       default: false
+    }
+  },
+  data() {
+    return {
+      nopermission: false,
+      list: [],
+      fieldList: [],
+      tableHeight: '400px',
+      showFullDetail: false,
+      productId: '', // 查看全屏产品详情的 ID
+      totalInfo: { total_price: '0.00', discount_rate: '0.00' },
+      /** 格式化规则 */
+      formatterRules: {}
+    }
+  },
+  computed: {},
+  watch: {
+    id: function(val) {
+      this.list = []
+      this.getDetail()
     }
   },
   mounted() {
@@ -108,7 +111,7 @@ export default {
       })
       this.fieldList.push({ prop: 'subtotal', width: '200', label: '合计' })
       function fieldFormatter(info) {
-        return info ? info : ''
+        return info || ''
       }
       this.formatterRules['category_id'] = {
         type: 'crm',
@@ -125,7 +128,7 @@ export default {
           this.nopermission = false
           this.loading = false
           this.list = res.data.list
-          this.totalInfo.total_price = res.data.total_price
+          this.totalInfo.total_price = moneyFormat(res.data.total_price)
           this.totalInfo.discount_rate = res.data.discount_rate
         })
         .catch(data => {
@@ -154,7 +157,10 @@ export default {
       }
     },
     /** 格式化字段 */
-    fieldFormatter(row, column) {
+    fieldFormatter(row, column, cellValue) {
+      if (['sales_price', 'price', 'subtotal'].includes(column.property)) {
+        return moneyFormat(cellValue)
+      }
       // 如果需要格式化
       var aRules = this.formatterRules[column.property]
       if (aRules) {
@@ -170,7 +176,7 @@ export default {
       }
       return row[column.property]
     },
-    //当某一行被点击时会触发该事件
+    // 当某一行被点击时会触发该事件
     handleRowClick(row, column, event) {
       this.productId = row.product_id
       this.showFullDetail = true

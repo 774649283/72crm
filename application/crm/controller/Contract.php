@@ -8,6 +8,8 @@
 namespace app\crm\controller;
 
 use app\admin\controller\ApiCommon;
+use app\admin\model\Message;
+use app\admin\model\User;
 use think\Hook;
 use think\Request;
 use think\Db;
@@ -64,34 +66,37 @@ class Contract extends ApiCommon
         $param['create_user_id'] = $userInfo['id'];
         $param['owner_user_id'] = $userInfo['id'];
 
-        //审核判断（是否有符合条件的审批流）
-        $examineFlowModel = new \app\admin\model\ExamineFlow();
-        if (!$examineFlowModel->checkExamine($param['create_user_id'], 'crm_contract')) {
-            return resultArray(['error' => '暂无审批人，无法创建']); 
-        }
-        //添加审批相关信息
-        $examineFlowData = $examineFlowModel->getFlowByTypes($param['create_user_id'], 'crm_contract');
-        if (!$examineFlowData) {
-            return resultArray(['error' => '无可用审批流，请联系管理员']);
-        }
-        $param['flow_id'] = $examineFlowData['flow_id'];
-        //获取审批人信息
-        if ($examineFlowData['config'] == 1) {
-            //固定审批流
-            $nextStepData = $examineStepModel->nextStepUser($userInfo['id'], $examineFlowData['flow_id'], 'crm_contract', 0, 0, 0);
-            $next_user_ids = arrayToString($nextStepData['next_user_ids']) ? : '';
-            $check_user_id = $next_user_ids ? : [];
-            $param['order_id'] = 1;
+        if ($param['is_draft']) {
+            //保存为草稿
+            $param['check_status'] = 5; //草稿(未提交)
+            $param['check_user_id'] = $param['check_user_id'] ? ','.$param['check_user_id'].',' : '';
         } else {
-            $check_user_id = $param['check_user_id'] ? ','.$param['check_user_id'].',' : '';
-        }
-        if (!$check_user_id) {
-            return resultArray(['error' => '无可用审批人，请联系管理员']);
-        }
-        $param['check_user_id'] = $check_user_id; 
-        //流程审批人
-        // $flow_user_id = $examineFlowModel->getUserByFlow($examineFlowData['flow_id'], $param['create_user_id']); 
-        // $param['flow_user_id'] = $flow_user_id ? arrayToString($flow_user_id) : '';            
+            //审核判断（是否有符合条件的审批流）
+            $examineFlowModel = new \app\admin\model\ExamineFlow();
+            if (!$examineFlowModel->checkExamine($param['create_user_id'], 'crm_contract')) {
+                return resultArray(['error' => '暂无审批人，无法创建']); 
+            }
+            //添加审批相关信息
+            $examineFlowData = $examineFlowModel->getFlowByTypes($param['create_user_id'], 'crm_contract');
+            if (!$examineFlowData) {
+                return resultArray(['error' => '无可用审批流，请联系管理员']);
+            }
+            $param['flow_id'] = $examineFlowData['flow_id'];
+            //获取审批人信息
+            if ($examineFlowData['config'] == 1) {
+                //固定审批流
+                $nextStepData = $examineStepModel->nextStepUser($userInfo['id'], $examineFlowData['flow_id'], 'crm_contract', 0, 0, 0);
+                $next_user_ids = arrayToString($nextStepData['next_user_ids']) ? : '';
+                $check_user_id = $next_user_ids ? : [];
+                $param['order_id'] = 1;
+            } else {
+                $check_user_id = $param['check_user_id'] ? ','.$param['check_user_id'].',' : '';
+            }
+            if (!$check_user_id) {
+                return resultArray(['error' => '无可用审批人，请联系管理员']);
+            }
+            $param['check_user_id'] = is_array($check_user_id) ? ','.implode(',',$check_user_id).',' : $check_user_id;
+        }        
 
         if ($contractModel->createData($param)) {
             return resultArray(['data' => '添加成功']);
@@ -110,6 +115,7 @@ class Contract extends ApiCommon
     {
         $contractModel = model('Contract');
         $userModel = new \app\admin\model\User();
+        $receivablesModel = new \app\crm\model\Receivables();
         $param = $this->param;
         $userInfo = $this->userInfo;
         $data = $contractModel->getDataById($param['id']);
@@ -125,6 +131,20 @@ class Contract extends ApiCommon
         if (!$data) {
             return resultArray(['error' => $contractModel->getError()]);
         }
+        //回款信息用来作废时二次确认
+        $auth_user_ids = $userModel->getUserByPer('crm', 'receivables', 'index');
+        
+        $where['contract_id'] = $param['id'];
+        $where['pageType'] = 'all';
+        $where['user_id'] = $userInfo['id']; 
+        $receivablesData = $receivablesModel->getDataList($where);
+        $receivablesData = $receivablesModel
+            ->where([
+                'contract_id' => $param['id'],
+                'owner_user_id' => ['IN', $auth_user_ids]
+            ])
+            ->count(); 
+        $data['receivablesDataCount'] = $receivablesData;
         return resultArray(['data' => $data]);
     }
 
@@ -148,14 +168,14 @@ class Contract extends ApiCommon
         //判断权限
         $auth_user_ids = $userModel->getUserByPer('crm', 'contract', 'update');
         //读写权限
-        $rwPre = $userModel->rwPre($userInfo['id'], $data['ro_user_id'], $data['rw_user_id'], 'update');        
+        $rwPre = $userModel->rwPre($userInfo['id'], $dataInfo['ro_user_id'], $dataInfo['rw_user_id'], 'update');        
         if (!in_array($dataInfo['owner_user_id'],$auth_user_ids) && !$rwPre) {
             header('Content-Type:application/json; charset=utf-8');
             exit(json_encode(['code'=>102,'error'=>'无权操作']));
         }        
-       
+        
         //已进行审批，不能编辑
-        if (!in_array($dataInfo['check_status'],['3','4'])) {
+        if (!in_array($dataInfo['check_status'],['3','4','5'])) {
             return resultArray(['error' => '当前状态为审批中或已审批通过，不可编辑']);
         }
         //将合同审批状态至为待审核，提交后重新进行审批
@@ -181,16 +201,18 @@ class Contract extends ApiCommon
         } else {
             $check_user_id = $param['check_user_id'] ? ','.$param['check_user_id'].',' : '';
         }
-        if (!$check_user_id) {
-            return resultArray(['error' => '无可用审批人，请联系管理员']);
+        if ($param['is_draft']) {
+            //保存为草稿
+            $param['check_status'] = 5;
+            $param['check_user_id'] = $param['check_user_id'] ? ','.$param['check_user_id'].',' : '';           
+        } else {
+            if (!$check_user_id) {
+                return resultArray(['error' => '无可用审批人，请联系管理员']);
+            }
+            $param['check_user_id'] = is_array($check_user_id) ? ','.implode(',',$check_user_id).',' : $check_user_id;
+            $param['check_status'] = 0;
         }
-        $param['check_user_id'] = $check_user_id;
-        $param['check_status'] = 0;
-
-        //流程审批人
-        // $flow_user_id = $examineFlowModel->getUserByFlow($examineFlowData['flow_id'], $dataInfo['owner_user_id']); 
-        // $param['flow_user_id'] = $flow_user_id ? arrayToString($flow_user_id) : '';   
-        $param['flow_user_id'] = '';      
+        $param['flow_user_id'] = '';   
 
         if ($contractModel->updateDataById($param, $param['id'])) {
             //将审批记录至为无效
@@ -210,10 +232,12 @@ class Contract extends ApiCommon
      */
     public function delete()
     {
-        $contractModel = model('Contract');
         $param = $this->param; 
-        $userInfo = $this->userInfo;       
-
+        $userInfo = $this->userInfo;  
+        $contractModel = model('Contract');     
+        $recordModel = new \app\admin\model\Record(); 
+        $fileModel = new \app\admin\model\File();
+        $actionRecordModel = new \app\admin\model\ActionRecord();
         if (!is_array($param['id'])) {
             $contract_id = [$param['id']];
         } else {
@@ -224,7 +248,7 @@ class Contract extends ApiCommon
 
         //数据权限判断
         $userModel = new \app\admin\model\User();
-        $auth_user_ids = $userModel->getUserByPer('crm', 'business', 'delete');
+        $auth_user_ids = $userModel->getUserByPer('crm', 'contract', 'delete');
         $adminTypes = adminGroupTypes($userInfo['id']);
         foreach ($contract_id as $k=>$v) {
             $isDel = true;
@@ -240,9 +264,14 @@ class Contract extends ApiCommon
                 $errorMessage[] = '名称为'.$data['name'].'的合同删除失败,错误原因：无权操作';
                 continue;
             }
-            if (!in_array($data['check_status'],['4']) && !in_array(1,$adminTypes)) {
+            if ($data['check_status'] == 6 && !in_array(1,$adminTypes)) {
                 $isDel = false;
-                $errorMessage[] = '名称为'.$data['name'].'的合同删除失败,错误原因：请先撤销审核';
+                $errorMessage[] = '名称为'.$data['name'].'的合同删除失败,错误原因：当前合同已作废，非超级管理员，不可删除';
+                continue;
+            }
+            if (!in_array($data['check_status'],['0','4','5','6']) && !in_array(1,$adminTypes)) {
+                $isDel = false;
+                $errorMessage[] = '名称为'.$data['name'].'的合同删除失败,错误原因：当前状态为审批中或已审批通过，不可删除';
                 continue;
             }            
             $delIds[] = $v;            
@@ -251,10 +280,14 @@ class Contract extends ApiCommon
             $data = $contractModel->delDatas($delIds);
             if (!$data) {
                 return resultArray(['error' => $contractModel->getError()]);
-            }   
-            //删除操作记录
-            $actionRecordModel = new \app\admin\model\ActionRecord();
-            $res = $actionRecordModel->delDataById(['types' => 'crm_contract','action_id' => $delIds]);                    
+            }
+            //删除跟进记录
+            $recordModel->delDataByTypes('crm_contract',$delIds);
+            //删除关联附件
+            $fileModel->delRFileByModule('crm_contract',$delIds);
+            //删除关联操作记录
+            $actionRecordModel->delDataById(['types'=>'crm_contract','action_id'=>$delIds]);              
+            actionLog($delIds,'','','');                    
         }
         if ($errorMessage) {
             return resultArray(['error' => $errorMessage]);
@@ -298,9 +331,8 @@ class Contract extends ApiCommon
         $errorMessage = [];
         foreach ($param['contract_id'] as $contract_id) {
             $contractInfo = $contractModel->getDataById($contract_id);
-
             if (!$contractInfo) {
-                $errorMessage[] = 'id:为'.$contract_id.'的合同转移失败，错误原因：数据不存在；';
+                $errorMessage[] = '名称:为《'.$contractInfo['name'].'》的合同转移失败，错误原因：数据不存在；';
                 continue;
             }
             //权限判断
@@ -402,32 +434,53 @@ class Contract extends ApiCommon
             $is_end = 1;
             $contractData['check_status'] = 3;
             //将审批记录至为无效
-            // $examineRecordModel->setEnd(['types' => 'crm_contract','types_id' => $param['id']]);                           
+            // $examineRecordModel->setEnd(['types' => 'crm_contract','types_id' => $param['id']]);
         }
         //已审批人ID
-        $resContract['flow_user_id'] = stringToArray($dataInfo['flow_user_id']) ? arrayToString(array_merge(stringToArray($dataInfo['flow_user_id']),[$user_id])) : arrayToString([$user_id]);        
+        $contractData['flow_user_id'] = stringToArray($dataInfo['flow_user_id']) ? arrayToString(array_merge(stringToArray($dataInfo['flow_user_id']),[$user_id])) : arrayToString([$user_id]);        
         $resContract = db('crm_contract')->where(['contract_id' => $param['id']])->update($contractData);
         if ($resContract) {
             //审批记录
             $resRecord = $examineRecordModel->createData($checkData);
             //审核通过，相关客户状态改为已成交
             if ($is_end == 1 && !empty($status)) {
-                //发送站内信
-                $sendContent = '您的申请【'.$dataInfo['name'].'】,'.$userInfo['realname'].'已审核通过,审批结束';
-                $resMessage = sendMessage($dataInfo['owner_user_id'], $sendContent, $param['id'], 1);                
+                // 审批通过消息告知负责人
+                (new Message())->send(
+					Message::CONTRACT_PASS,
+					[
+						'title' => $dataInfo['name'],
+						'action_id' => $param['id']
+					],
+					$dataInfo['owner_user_id']
+				);
 
                 $customerData = [];
                 $customerData['deal_status'] = '已成交';
                 $customerData['deal_time'] = time();
+                $customerData['is_lock'] = 0;
                 db('crm_customer')->where(['customer_id' => $dataInfo['customer_id']])->update($customerData);
             } else {
                 if ($status) {
                     //发送站内信
-                    $sendContent = '您的申请【'.$dataInfo['name'].'】,'.$userInfo['realname'].'已审核通过';
-                    $resMessage = sendMessage($dataInfo['owner_user_id'], $sendContent, $param['id'], 1);
+                    // 通过未完成，发送消息给
+                    (new Message())->send(
+                        Message::CONTRACT_TO_DO,
+                        [
+                            'from_user' => User::where(['id' => $dataInfo['owner_user_id']])->value('realname'),
+                            'title' => $dataInfo['name'],
+                            'action_id' => $param['id']
+                        ],
+                        stringToArray($contractData['check_user_id'])
+                    );
                 } else {
-                    $sendContent = '您的申请【'.$dataInfo['name'].'】,'.$userInfo['realname'].'已审核拒绝,审核意见：'.$param['content'];
-                    $resMessage = sendMessage($dataInfo['owner_user_id'], $sendContent, $param['id'], 1);
+                    (new Message())->send(
+                        Message::CONTRACT_REJECT,
+                        [
+                            'title' => $dataInfo['name'],
+                            'action_id' => $param['id']
+                        ],
+                        $dataInfo['owner_user_id']
+                    );
                 }          
             }
             return resultArray(['data' => '审批成功']);            
@@ -536,4 +589,78 @@ class Contract extends ApiCommon
         $list['discount_rate'] = $contractInfo['discount_rate'] ? : '0.00';
         return resultArray(['data' => $list]);
     }       
+
+    /**
+     * 导出
+     * @author Michael_xu
+     * @param 
+     * @return
+     */
+    public function excelExport()
+    {
+        $param = $this->param;
+        $userInfo = $this->userInfo;
+        $param['user_id'] = $userInfo['id'];
+        if ($param['contract_id']) {
+           $param['contract_id'] = ['condition' => 'in','value' => $param['contract_id'],'form_type' => 'text','name' => ''];
+           $param['is_excel'] = 1;
+        }
+        $excelModel = new \app\admin\model\Excel();
+        // 导出的字段列表
+        $fieldModel = new \app\admin\model\Field();
+        $field_list = $fieldModel->getIndexFieldConfig('crm_contract', $userInfo['id']);
+        // 文件名
+        $file_name = '5kcrm_contract_'.date('Ymd');
+
+        $model = model('Contract');
+        $temp_file = $param['temp_file'];
+        unset($param['temp_file']);
+        $page = $param['page'] ?: 1;
+        unset($param['page']);
+        unset($param['export_queue_index']);
+        return $excelModel->batchExportCsv($file_name, $temp_file, $field_list, $page, function($page, $limit) use ($model, $param, $field_list) {
+            $param['page'] = $page;
+            $param['limit'] = $limit;
+            $data = $model->getDataList($param);
+            $data['list'] = $model->exportHandle($data['list'], $field_list, 'contract');
+            return $data;
+        });
+    }  
+
+     /**
+     * 修改已审核过的合同为作废状态
+     * @author ZFH
+     * @param 
+     * @return
+     */ 
+    public function cancel()
+    {
+        $param = $this->param;
+        $userInfo = $this->userInfo;
+        $userModel = new \app\admin\model\User();
+        $adminTypes = adminGroupTypes($userInfo['id']);
+
+        if (!$param['contract_id']) {
+            return resultArray(['error' => '参数错误']);
+        }
+         //判断权限
+        $auth_user_ids = $userModel->getUserByPer('crm', 'contract', 'cancel');
+        $contractInfo = db('crm_contract')->where(['contract_id' => $param['contract_id']])->find();
+        if(!$contractInfo){
+            return resultArray(['error' => '数据不存在']);
+        }
+        if (!in_array($contractInfo['owner_user_id'],$auth_user_ids)) {
+            header('Content-Type:application/json; charset=utf-8');
+            exit(json_encode(['code'=>102,'error'=>'无权操作']));
+        }
+        if($contractInfo['check_status'] != 2){
+            return resultArray(['error' => '未审核通过的合同不可作废,请选择撤销或删除']);
+        }
+        $data['check_status'] = 6;       //变更合同状态为作废
+        if(db('crm_contract')->where(['contract_id'=>$param['contract_id']])->update($data)){
+            return resultArray(['data' => '作废成功']);
+        }else{
+            return resultArray(['error' => '失败，请重试']);
+        }
+    }
 }

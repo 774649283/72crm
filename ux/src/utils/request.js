@@ -10,17 +10,17 @@ import qs from 'qs'
 var showLoginMessageBox = false
 axios.defaults.headers.post['Content-Type'] = 'application/x-www-form-urlencoded;charset=UTF-8'
 // 创建axios实例
-// let hrefs = []
-// if (window.location.href.indexOf("index.html") != -1) {
-//   hrefs = window.location.href.split('index.html')
-// } else {
-//   hrefs = window.location.href.split('#')
-// }
-// let baseURL = hrefs.length > 0 ? hrefs[0] : window.location.href
+let hrefs = []
+if (window.location.href.indexOf('index.html') != -1) {
+  hrefs = window.location.href.split('index.html')
+} else {
+  hrefs = window.location.href.split('#')
+}
+const baseURL = hrefs.length > 0 ? hrefs[0] : window.location.href
 // baseURL + 'index.php/' 默认请求地址
 // process.env.BASE_API 自定义请求地址
 
-window.BASE_URL = process.env.BASE_API
+window.BASE_URL = process.env.NODE_ENV === 'production' ? baseURL + 'index.php/' : process.env.BASE_API
 
 const service = axios.create({
   baseURL: window.BASE_URL, // api 的 base_url
@@ -37,7 +37,7 @@ service.interceptors.request.use(
   },
   error => {
     // Do something with request error
-    Promise.reject(error)
+    return Promise.reject(error)
   }
 )
 
@@ -61,21 +61,24 @@ service.interceptors.response.use(
               showCancelButton: false,
               showClose: false,
               confirmButtonText: '重新登录',
-              type: 'warning'
+              type: 'warning',
+              callback: action => {
+                showLoginMessageBox = false
+                if (action === 'confirm') {
+                  removeAuth().then(() => {
+                    location.reload() // 为了重新实例化vue-router对象 避免bug
+                  }).catch(() => {
+                    location.reload()
+                  })
+                }
+              }
             }
-          ).then(() => {
-            showLoginMessageBox = false
-            removeAuth().then(() => {
-              location.reload() // 为了重新实例化vue-router对象 避免bug
-            }).catch(() => {
-              location.reload()
-            })
-          })
+          )
         }
       } else if (res.code === 402) {
         if (res.error && Object.prototype.toString.call(res.error) === '[object Array]') {
-          res.error = res.error.reduce(function (prev, cur, index, array) {
-            return prev + "\r\n" + cur
+          res.error = res.error.reduce(function(prev, cur, index, array) {
+            return prev + '\r\n' + cur
           })
         }
         Message({
@@ -93,7 +96,7 @@ service.interceptors.response.use(
           })
         }
       }
-      return Promise.reject(res.error)
+      return Promise.reject(res)
     } else {
       return res
     }

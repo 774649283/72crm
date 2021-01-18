@@ -47,6 +47,10 @@ class Index extends ApiCommon
 		$structureModel = new \app\admin\model\Structure();
 		$fileModel = new \app\admin\model\File();
 		$commonModel = new \app\admin\model\Comment();
+		$BusinessModel = new \app\crm\model\Business();
+		$ContactsModel = new \app\crm\model\Contacts();
+		$ContractModel = new \app\crm\model\Contract();
+		$CustomerModel = new \app\crm\model\Customer();
 
 		if ($param['type'] == 1) { //日志
 			$where = ' controller_name = "log" and  module_name = "oa" ';
@@ -55,7 +59,7 @@ class Index extends ApiCommon
 		} elseif ($param['type'] == 3) { //公告
 			$where = ' controller_name = "announcement" and  module_name = "oa" ';
 		} elseif ($param['type'] == 4) { //任务
-			$where = ' ( controller_name = "task" and  module_name = "work" ) ';
+			$where = ' ( controller_name = "task" and  module_name = "oa" ) ';
 		} elseif ($param['type'] == 5) { //审批
 			$where = ' ( controller_name = "examine" and  module_name = "oa" ) ';			
 		} else { //全部
@@ -130,6 +134,11 @@ class Index extends ApiCommon
 					$actionList[$key]['ownerList'] =  $userModel->getDataByStr($eventInfo['owner_user_ids']);
 					$actionList[$key]['type'] = 2;
 					$actionList[$key]['type_name'] = "日程";
+					$relation = Db::name('OaEventRelation')->where('event_id ='.$value['action_id'])->find();
+					$actionList[$key]['businessList'] = $relation['business_ids'] ? $BusinessModel->getDataByStr($relation['business_ids']) : []; //商机
+					$actionList[$key]['contactsList'] = $relation['contacts_ids'] ? $ContactsModel->getDataByStr($relation['contacts_ids']) : []; //联系人
+					$actionList[$key]['contractList'] = $relation['contract_ids'] ? $ContractModel->getDataByStr($relation['contract_ids']) : []; //合同
+					$actionList[$key]['customerList'] = $relation['customer_ids'] ? $CustomerModel->getDataByStr($relation['customer_ids']) : []; //客户
 				} else {
 					unset($actionList[$key]);
 				}
@@ -276,6 +285,7 @@ class Index extends ApiCommon
 	{
 		$param = $this->param;
 		$userInfo = $this->userInfo;
+		$userModel = new \app\admin\model\User();
 		if ($param['start_time']){
 			$where['start_time'] = ['<=',$param['start_time']+3600*24 ];
 			$where['end_time'] = ['>=',$param['start_time']];
@@ -286,12 +296,9 @@ class Index extends ApiCommon
 					->whereOr(['create_user_id' => $userInfo['id']]);
 				})->select(); 
 			if (count($eventList)) {
-				$userModel = new \app\admin\model\User();
 				foreach ($eventList as $k=>$v){
 					$eventList[$k]['ownList']= $userModel->getDataByStr($v['owner_user_ids']);
 				}
-			} else {
-				return resultArray(['data' => array()]);
 			}
 			return resultArray(['data' => $eventList]);
 		} else {

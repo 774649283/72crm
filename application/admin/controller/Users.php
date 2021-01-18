@@ -10,7 +10,10 @@ namespace app\admin\controller;
 use think\Request;
 use think\Session;
 use think\Hook;
+use think\Cache;
 use think\Db;
+use app\admin\model\LoginRecord;
+use app\admin\model\User as UserModel;
 
 class Users extends ApiCommon
 {
@@ -22,10 +25,24 @@ class Users extends ApiCommon
     **/    
     public function _initialize()
     {
-        parent::_initialize();
         $action = [
-            'permission'=>[],
-            'allow'=>['index','save','update','updatepwd','enables','read','getuserlist','updateimg','resetpassword','userlistbystructid','groups','groupsdel','tobeusers','structureuserlist','getuserlist']
+            'permission' => ['exceldownload'],
+            'allow' => [
+                'update',
+                'updatepwd',
+                'read',
+                'updateimg',
+                'resetpassword',
+                'userlistbystructid',
+                'groups'
+                ,'groupsdel',
+                'tobeusers',
+                'structureuserlist',
+                'getuserlist',
+                'usernameedit',
+                'import',
+                'setparent'
+            ]
         ];
         Hook::listen('check_auth',$action);
 
@@ -33,15 +50,6 @@ class Users extends ApiCommon
         $a = strtolower($request->action());        
         if (!in_array($a, $action['permission'])) {
             parent::_initialize();
-        }
-
-		$userInfo = $this->userInfo;
-        //权限判断
-        $unAction = ['index','read','getuserlist','structureuserlist','updateimg','resetpassword','update'];
-        $adminTypes = adminGroupTypes($userInfo['id']);
-        if (!in_array(3,$adminTypes) && !in_array(1,$adminTypes) && !in_array(2,$adminTypes) && !in_array($a, $unAction)) {
-            header('Content-Type:application/json; charset=utf-8');
-            exit(json_encode(['code'=>102,'error'=>'无权操作']));
         }        
     }
 
@@ -103,31 +111,35 @@ class Users extends ApiCommon
         $userModel = model('User');
         $param = $this->param;
         $userInfo = $this->userInfo;
+        $userData = db('admin_user')->where(['id' => $param['id']])->find();
         if (!$param['id']) {
             //修改个人信息
             $param['user_id'] = $userInfo['id'];
         } else {
             //权限判断
-            $adminTypes = adminGroupTypes($userInfo['id']);
-            if (!in_array(3,$adminTypes) && !in_array(1,$adminTypes) && !in_array(2,$adminTypes)) {
+            if (!checkPerByAction('admin', 'users', 'update')) {
                 header('Content-Type:application/json; charset=utf-8');
                 exit(json_encode(['code'=>102,'error'=>'无权操作']));
-            }            
+            }             
         }
+        unset($param['username']);
         $data = $userModel->updateDataById($param, $param['id']);
         if (!$data) {
             return resultArray(['error' => $userModel->getError()]);
         }
-
-        $param['userInfo'] = $userInfo;
-        $resSync = model('Sync')->syncData($param);        
-
+        $param['userInfo'] = $userData;
+        $resSync = model('Sync')->syncData($param);
         return resultArray(['data' => '编辑成功']);
     }    
 
 	//批量设置密码
 	public function updatePwd()
 	{
+        //权限判断
+        if (!checkPerByAction('admin', 'users', 'update')) {
+            header('Content-Type:application/json; charset=utf-8');
+            exit(json_encode(['code'=>102,'error'=>'无权操作']));
+        }         
 		$param = $this->param;
 		if ($param['password'] && is_array($param['id'])) {
 			$userModel = model('User');
@@ -157,9 +169,9 @@ class Users extends ApiCommon
             $ids = $param['id'];
         }
         //顶级管理员不能修改
-        foreach ($ids as $v) {
-            if ($v == 1) {
-                unset($ids[$v]);
+        foreach ($ids as $k=>$v) {
+            if ((int)$v == 1 && $param['status'] == '0') {
+                unset($ids[$k]);
             }
         }
         $data = $userModel->enableDatas($ids, $param['status']);  
@@ -178,30 +190,45 @@ class Users extends ApiCommon
     {
         $userModel = model('User');
         $param = $this->param;
-        $by = $param['by'];
+        $by = $param['by'] ? : '';
+        $user_id = $param['user_id'] ? : '';
+        $where = [];
+        $belowIds = [];
         if ($param['m'] && $param['c'] && $param['a']) {
             if ($param['m'] == 'oa' && $param['c'] == 'task') {
                $belowIds = getSubUserId(true, 1); 
+            } else {
+                $belowIds = $userModel->getUserByPer($param['m'], $param['c'], $param['a']);
             }
-            $belowIds = $userModel->getUserByPer($param['m'], $param['c'], $param['a']); 
+            $where['user.id'] = ['in',$belowIds];
         } else {
-            // if ($by == 'all') {
-            //     $belowIds = getSubUserId(true, 1);
-            // } else {
-            //     $userInfo = $this->userInfo;
-            //     $adminIds = $userModel->getAdminId();
-            //     if (in_array($userInfo['id'],$adminIds)) {
-            //         $belowIds = getSubUserId(true, 1);
-            //     } else {
-            //         //下属id
-            //         $belowIds = getSubUserId();
-            //     }                
-            // }
-            $belowIds = getSubUserId(true, 1);
+            if ($by == 'sub') {
+                $userInfo = $this->userInfo;
+                $adminIds = $userModel->getAdminId();
+                if (in_array($userInfo['id'],$adminIds)) {
+                    $belowIds = getSubUserId(true, 1);
+                } else {
+                    //下属id
+                    $belowIds = getSubUserId();
+                } 
+                $where['user.id'] = ['in',$belowIds];
+            } elseif ($by == 'parent') {
+                if ($user_id == 1) {
+                    $where['user.id'] = 0;
+                } else {
+                    $unUserId[] = $user_id;
+                    $subUserId = getSubUser($user_id);
+                    $unUserId = $subUserId ? array_merge($subUserId,$unUserId) : $unUserId;
+                }
+                $where['user.id'] = ['not in',$unUserId];  
+            } else {
+                $belowIds = getSubUserId(true, 1);
+                $where['user.id'] = ['in',$belowIds];     
+            }
         }
         $userList = db('admin_user')
-                    ->where(['user.id' => ['in',$belowIds]])
                     ->alias('user')
+                    ->where($where)
                     ->where('user.status>0 and user.type=1')
                     ->join('__ADMIN_STRUCTURE__ structure', 'structure.id = user.structure_id', 'LEFT')
                     ->field('user.id,user.realname,user.thumb_img,structure.name as s_name')
@@ -244,8 +271,14 @@ class Users extends ApiCommon
     public function resetPassword()
     {   
         $param = $this->param;
+        $userInfo = $this->userInfo;
         $userModel = model('User');
-        if ($param['id'] && $param['id'] !== $userInfo['id']) {
+        if ($param['id'] && (int)$param['id'] !== $userInfo['id']) {
+            //权限判断
+            if (!checkPerByAction('admin', 'users', 'update')) {
+                header('Content-Type:application/json; charset=utf-8');
+                exit(json_encode(['code'=>102,'error'=>'无权操作']));
+            }  
             $user_id = $param['id'];
             if (!$param['new_pwd']) {
                 $this->error = '请输入重置密码';
@@ -287,6 +320,11 @@ class Users extends ApiCommon
      */
     public function groups()
     {
+        //权限判断
+        if (!checkPerByAction('admin', 'groups', 'update')) {
+            header('Content-Type:application/json; charset=utf-8');
+            exit(json_encode(['code'=>102,'error'=>'无权操作']));
+        }        
         $param = $this->param;
         if (!$param['users'] && !$param['structures']) {
             return resultArray(['error' => '请选择员工']);
@@ -321,9 +359,9 @@ class Users extends ApiCommon
                 $resData = false;
             }            
         }
-        if ($resData == false) {
-            return resultArray(['error' => '操作失败，请重试']);      
-        }
+        // if ($resData == false) {
+        //     return resultArray(['error' => '操作失败，请重试']);      
+        // }
         return resultArray(['data' => '创建成功']);       
     }
 
@@ -334,6 +372,11 @@ class Users extends ApiCommon
      */
     public function groupsDel()
     {
+        //权限判断
+        if (!checkPerByAction('admin', 'groups', 'update')) {
+            header('Content-Type:application/json; charset=utf-8');
+            exit(json_encode(['code'=>102,'error'=>'无权操作']));
+        }        
         $param = $this->param;
         if (!$param['user_id']) {
             return resultArray(['error' => '请选择员工']);
@@ -356,7 +399,7 @@ class Users extends ApiCommon
     public function structureUserList()
     {
         $structure_list = db('admin_structure')->select();
-        $structureList = getSubObj(0, $structure_list, '');
+        $structureList = getSubObj(0, $structure_list, '', 1);
         foreach ($structureList as $k=>$v) {
             $userList = [];
             $userList = db('admin_user')->where(['structure_id' => $v['id'],'status' => array('in',['1','3'])])->field('id,realname')->select();
@@ -386,4 +429,161 @@ class Users extends ApiCommon
 		$ret = $usermodel->getUserListByStructureId($structure_id) ? : [];
         return resultArray(['data'=>$ret]);
 	}
+
+    /**
+     * 员工账号修改
+     * @param 
+     * @return
+     */    
+    public function usernameEdit()
+    {
+        //权限判断
+        if (!checkPerByAction('admin', 'users', 'update')) {
+            header('Content-Type:application/json; charset=utf-8');
+            exit(json_encode(['code'=>102,'error'=>'无权操作']));
+        }        
+        $param = $this->param;
+        $userInfo = $this->userInfo;
+        //权限判断
+        if ($param['id'] == 1) {
+            return resultArray(['error' => '管理员账号暂不能修改']);
+        }
+        $adminTypes = adminGroupTypes($userInfo['id']);
+        if (!in_array(3,$adminTypes) && !in_array(1,$adminTypes) && !in_array(2,$adminTypes)) {
+            header('Content-Type:application/json; charset=utf-8');
+            exit(json_encode(['code'=>102,'error'=>'无权操作']));
+        }         
+        if (!$param['id'] || !$param['username'] || !$param['password']) {
+            return resultArray(['error' => '参数错误！']);
+        }
+        if (db('admin_user')->where(['id' => ['neq',$param['id']],'username' => $param['username']])->find()) {
+            return resultArray(['error' => '手机号码已存在！']);
+        }
+        $userData = db('admin_user')->where(['id' => $param['id']])->field('username,salt,password')->find();
+        $data = [];
+        $data['username'] = $param['username'];
+        $data['password'] = user_md5($param['password'], $userData['salt'], $param['username']);
+        $data['userInfo'] = $userData;
+        $resSync = model('Sync')->syncData($data);
+        if ($resSync) {
+            unset($data['userInfo']);
+            $res = db('admin_user')->where(['id' => $param['id']])->update($data);
+            return resultArray(['data' => '修改成功！']);
+        } else {
+            return resultArray(['error' => '修改失败，请重试！']);
+        }
+    }
+
+    /**
+     * 登录记录
+     */
+    public function loginRecord()
+    {
+        $loginRecordModel = new LoginRecord();
+        $request = $loginRecordModel->fmtRequest($this->param);
+        $where = [];
+        getWhereTimeByParam($where);
+        getWhereUserByParam($where, 'create_user_id');
+
+        $data = $loginRecordModel
+            ->where($where)
+            ->order(['create_time' => 'DESC'])
+            ->paginate($request['limit'])
+            ->each(function ($val) {
+                $val['create_user_info'] = $val->create_user_info;
+                $val['type_name'] = $val->type_name;
+            })
+            ->toArray();
+        
+        return resultArray([
+            'data' => [
+                'list' => $data['data'],
+                'dataCount' => $data['total'],
+                'lastPage' => $data['last_page'],
+            ],
+        ]);
+    }
+
+    /**
+     * 员工导入模板下载
+     * @author Michael_xu
+     * @param string $save_path 本地保存路径     用于错误数据导出，在 Admin\Model\Excel::batchImportData()调用
+     * @return
+     */
+    public function excelDownload($save_path = '')
+    {
+        $param = $this->param;
+        $userInfo = $this->userInfo;
+        $excelModel = new \app\admin\model\Excel();
+
+        // 导出的字段列表
+        $field_list = UserModel::$import_field_list;
+        $excelModel->excelImportDownload($field_list, 'admin_user', $save_path);
+    }
+
+    /**
+     * 员工导入
+     */
+    public function import()
+    {
+        // 仅允许超管，系统管理员，部门与员工管理员 导入
+        if (false === UserModel::checkUserGroup([1, 2, 3])) {
+            return resultArray(['error' => '没有该权限']);
+        }
+        $param = $this->param;
+        $userInfo = $this->userInfo;
+        $excelModel = new \app\admin\model\Excel();
+        $param['types'] = 'admin_user';
+        $file = request()->file('file');
+        $res = $excelModel->batchImportData($file, $param, $this);
+        if (!$res) {
+            return resultArray(['error' => $excelModel->getError()]);
+        }
+        Cache::clear('user_info');
+        return resultArray(['data' => $excelModel->getError()]);
+    }
+
+    /**
+     * 批量设置直属上级
+     *
+     * @author Ymob
+     * @datetime 2019-10-28 13:37:57
+     */
+    public function setParent()
+    {
+        // 仅允许超管，系统管理员，部门与员工管理员 批量设置
+        if (false === UserModel::checkUserGroup([1, 2, 3])) {
+            return resultArray(['error' => '没有该权限']);
+        }
+        $parent_id = (int) $this->param['parent_id'];
+        $parent_user = UserModel::find($parent_id);
+        if (!$parent_user) {
+            return resultArray(['error' => '请选择直属上级']);
+        }
+        $user_id_list = (array) $this->param['id_list'];
+        if (empty($user_id_list)) {
+            return resultArray(['error' => '请选择员工']);
+        }
+        if (in_array(1, $user_id_list)) {
+            return resultArray(['error' => '超级管理员不能设置上级']);
+        }
+
+        if (in_array($parent_id, $user_id_list)) {
+            return resultArray(['error' => '直属上级不能为员工自己']);
+        }
+        
+        foreach ($user_id_list as $val) {
+            if (in_array($parent_id, getSubUserId(true, 0, (int) $val))) {
+                return resultArray(['error' => '直属上级不能是自己下属（包含下属的下属）']);
+            }
+        }
+
+        $a = new UserModel;
+        if ($a->where(['id' => ['IN', $user_id_list]])->update(['parent_id' => $parent_id])) {
+            Cache::clear('user_info');
+            return resultArray(['data' => '员工直属上级设置成功']);
+        } else {
+            return resultArray(['error' => '员工直属上级设置失败' . $a->getError()]);
+        }
+    } 
 }

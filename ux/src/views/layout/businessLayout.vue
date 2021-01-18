@@ -1,19 +1,21 @@
 <template>
   <el-container>
     <el-header class="nav-container">
-      <navbar :navIndex="5"
-              @nav-items-click="navClick"></navbar>
+      <navbar
+        :nav-index="5"
+        @nav-items-click="navClick"/>
     </el-header>
     <el-container>
-      <el-aside width="auto"
-                class="aside-container">
-        <sidebar :items="biRouters.children"
-                 createButtonTitle=""
-                 mainRouter="bi"></sidebar>
+      <el-aside
+        width="auto"
+        class="aside-container">
+        <sidebar
+          :items="biRouterItems"
+          create-button-title=""
+          main-router="bi"/>
       </el-aside>
-      <el-main id="crm-main-container"
-               style="padding:15px;">
-        <app-main></app-main>
+      <el-main id="crm-main-container">
+        <app-main/>
       </el-main>
     </el-container>
   </el-container>
@@ -22,19 +24,28 @@
 <script>
 import { mapGetters } from 'vuex'
 import { Navbar, Sidebar, AppMain } from './components'
+import { biRouterMenu } from '@/router/modules/business'
 
 export default {
-  name: 'business-layout',
+  name: 'BusinessLayout',
   components: {
     Navbar,
     Sidebar,
     AppMain
   },
-  computed: {
-    ...mapGetters(['bi', 'biRouters'])
-  },
+
   data() {
     return {}
+  },
+  computed: {
+    ...mapGetters(['bi']),
+    biRouterItems() {
+      for (let index = 0; index < biRouterMenu.length; index++) {
+        const routerMenuItem = biRouterMenu[index]
+        routerMenuItem.hidden = !this.bi[routerMenuItem.meta.subType]
+      }
+      return biRouterMenu
+    }
   },
   methods: {
     navClick(index) {}
@@ -55,5 +66,9 @@ export default {
   box-shadow: 0px 1px 2px #dbdbdb;
   z-index: 100;
   min-width: 1200px;
+}
+
+.el-container {
+  overflow: hidden;
 }
 </style>

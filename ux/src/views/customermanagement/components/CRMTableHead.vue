@@ -1,83 +1,99 @@
 <template>
   <div>
-    <flexbox v-show="selectionList.length == 0"
-             class="th-container">
+    <flexbox
+      v-show="selectionList.length == 0"
+      class="th-container">
       <div v-if="!isSeas">场景：</div>
-      <el-popover v-if="!isSeas"
-                  trigger="click"
-                  popper-class="no-padding-popover"
-                  v-model="showScene"
-                  width="150">
+      <el-popover
+        v-if="!isSeas"
+        v-model="showScene"
+        trigger="click"
+        popper-class="no-padding-popover"
+        width="150">
         <flexbox slot="reference">
-          <div class="condition_title">{{sceneName ? sceneName : getDefaultSceneName()}}</div>
-          <i class="el-icon-arrow-down el-icon--right"
-             style="color:#777;"></i>
+          <div class="condition_title">{{ sceneData.name || getDefaultSceneName() }}</div>
+          <i
+            class="el-icon-arrow-down el-icon--right"
+            style="color:#777;"/>
         </flexbox>
-        <scene-list ref="sceneList"
-                    :crmType="crmType"
-                    @scene="sceneSelect"
-                    @scene-handle="sceneHandle"
-                    @hidden-scene="showScene=false"></scene-list>
+        <scene-list
+          ref="sceneList"
+          :crm-type="crmType"
+          @scene="sceneSelect"
+          @scene-handle="sceneHandle"
+          @hidden-scene="showScene=false"/>
       </el-popover>
-      <img @click="showFilterClick"
-           class="c-filtrate"
-           :style="{ 'margin-left': isSeas ? 0 : '30px'}"
-           src="@/assets/img/c_filtrate.png" />
-      <div class="condition_title"
-           @click="showFilterClick">高级筛选</div>
-      <filter-form :fieldList="fieldList"
-                   :dialogVisible.sync="showFilter"
-                   :obj="filterObj"
-                   :crmType="crmType"
-                   :isSeas="isSeas"
-                   @filter="handleFilter">
-      </filter-form>
+      <img
+        :style="{ 'margin-left': isSeas ? 0 : '30px'}"
+        class="c-filtrate"
+        src="@/assets/img/c_filtrate.png"
+        @click="showFilterClick" >
+      <div
+        class="condition_title"
+        @click="showFilterClick">高级筛选</div>
+      <filter-form
+        :field-list="fieldList"
+        :dialog-visible.sync="showFilter"
+        :obj="filterObj"
+        :crm-type="crmType"
+        :is-seas="isSeas"
+        @filter="handleFilter"/>
     </flexbox>
-    <flexbox v-if="selectionList.length > 0"
-             class="selection-bar">
-      <div class="selected—title">已选中<span class="selected—count">{{selectionList.length}}</span>项</div>
+    <flexbox
+      v-if="selectionList.length > 0"
+      class="selection-bar">
+      <div class="selected—title">已选中<span class="selected—count">{{ selectionList.length }}</span>项</div>
       <flexbox class="selection-items-box">
-        <flexbox class="selection-item"
-                 v-for="(item, index) in getSelectionHandleItemsInfo()"
-                 :key="index"
-                 v-if="whetherTypeShowByPermision(item.type)"
-                 @click.native="selectionBarClick(item.type)">
-          <img class="selection-item-icon"
-               :src="item.icon" />
-          <div class="selection-item-name">{{item.name}}</div>
+        <flexbox
+          v-for="(item, index) in getSelectionHandleItemsInfo()"
+          :key="index"
+          class="selection-item"
+          @click.native="selectionBarClick(item.type)">
+          <img
+            :src="item.icon"
+            class="selection-item-icon" >
+          <div class="selection-item-name">{{ item.name }}</div>
         </flexbox>
       </flexbox>
     </flexbox>
-    <filter-content v-if="filterObj.form && filterObj.form.length > 0"
-                    :obj="filterObj"
-                    @delete="handleDeleteField">
-    </filter-content>
+    <filter-content
+      v-if="filterObj.form && filterObj.form.length > 0"
+      :obj="filterObj"
+      @delete="handleDeleteField"/>
 
-    <transfer-handle :crmType="crmType"
-                     :selectionList="selectionList"
-                     @handle="handleCallBack"
-                     :dialogVisible.sync="transferDialogShow"></transfer-handle>
-    <teams-handle :crmType="crmType"
-                  :title="teamsTitle"
-                  :selectionList="selectionList"
-                  @handle="handleCallBack"
-                  :dialogVisible.sync="teamsDialogShow"></teams-handle>
-    <alloc-handle :crmType="crmType"
-                  :selectionList="selectionList"
-                  @handle="handleCallBack"
-                  :dialogVisible.sync="allocDialogShow"></alloc-handle>
+    <transfer-handle
+      :crm-type="crmType"
+      :selection-list="selectionList"
+      :dialog-visible.sync="transferDialogShow"
+      @handle="handleCallBack"/>
+    <teams-handle
+      :crm-type="crmType"
+      :title="teamsTitle"
+      :selection-list="selectionList"
+      :dialog-visible.sync="teamsDialogShow"
+      @handle="handleCallBack"/>
+    <alloc-handle
+      :crm-type="crmType"
+      :selection-list="selectionList"
+      :dialog-visible.sync="allocDialogShow"
+      @handle="handleCallBack"/>
+    <deal-status-handle
+      :crm-type="crmType"
+      :selection-list="selectionList"
+      :visible.sync="dealStatusShow"
+      @handle="handleCallBack"/>
 
-    <scene-set :dialogVisible.sync="showSceneSet"
-               @save-success="updateSceneList"
-               :crmType="crmType">
-    </scene-set>
+    <scene-set
+      :dialog-visible.sync="showSceneSet"
+      :crm-type="crmType"
+      @save-success="updateSceneList"/>
 
-    <scene-create :fieldList="fieldList"
-                  :crmType="crmType"
-                  :dialogVisible.sync="showSceneCreate"
-                  @saveSuccess="updateSceneList"
-                  :obj="sceneFilterObj">
-    </scene-create>
+    <scene-create
+      :field-list="fieldList"
+      :crm-type="crmType"
+      :dialog-visible.sync="showSceneCreate"
+      :obj="sceneFilterObj"
+      @saveSuccess="updateSceneList"/>
   </div>
 </template>
 
@@ -85,26 +101,28 @@
 import { mapGetters } from 'vuex'
 import {
   filterIndexfields,
-  crmSceneIndex,
   crmSceneSave
 } from '@/api/customermanagement/common'
 import {
   crmLeadsTransform,
-  crmLeadsExcelExport,
   crmLeadsDelete
 } from '@/api/customermanagement/clue'
 import {
   crmCustomerLock,
   crmCustomerPutInPool,
-  crmCustomerExcelExport,
   crmCustomerDelete,
   crmCustomerReceive
 } from '@/api/customermanagement/customer'
-import { crmContactsDelete } from '@/api/customermanagement/contacts'
+import {
+  crmContactsDelete
+} from '@/api/customermanagement/contacts'
 import { crmBusinessDelete } from '@/api/customermanagement/business'
 import { crmContractDelete } from '@/api/customermanagement/contract'
 import { crmReceivablesDelete } from '@/api/customermanagement/money'
-import { crmProductStatus } from '@/api/customermanagement/product'
+import {
+  crmProductStatus,
+  crmProductDelete
+} from '@/api/customermanagement/product'
 
 import filterForm from './filterForm'
 import filterContent from './filterForm/filterContent'
@@ -115,9 +133,10 @@ import SceneCreate from './sceneForm/SceneCreate'
 import TransferHandle from './selectionHandle/TransferHandle' // 转移
 import TeamsHandle from './selectionHandle/TeamsHandle' // 操作团队成员
 import AllocHandle from './selectionHandle/AllocHandle' // 公海分配操作
+import DealStatusHandle from './selectionHandle/DealStatusHandle' // 客户状态修改操作
 
 export default {
-  name: 'CRM-table-head', //客户管理下 重要提醒 回款计划提醒
+  name: 'CRMTableHead', // 客户管理下 重要提醒 回款计划提醒
   components: {
     filterForm,
     filterContent,
@@ -126,38 +145,10 @@ export default {
     TeamsHandle,
     AllocHandle,
     SceneCreate,
-    SceneSet
+    SceneSet,
+    DealStatusHandle
   },
-  computed: {
-    ...mapGetters(['crm'])
-  },
-  data() {
-    return {
-      sceneTypes: [
-        { type: 'enter', name: '我负责的' },
-        { type: 'out', name: '我' }
-      ],
-      sceneType: null,
-      showScene: false, // 场景操作
-      showFilter: false, // 控制筛选框
-      fieldList: [],
-      filterObj: { form: [] }, // 筛选确定数据
 
-      sceneID: '', //场景默认信息
-      sceneName: '', //场景名称
-      showSceneSet: false, // 展示场景设置
-      showSceneCreate: false, // 展示场景添加
-      sceneFilterObj: { form: [] }, // 筛选确定数据
-
-      /** 勾选操作数据 */
-      selectionList: [],
-      transferDialogShow: false,
-      teamsDialogShow: false, // 团队操作提示框
-      teamsTitle: '', // 团队操作标题名
-      allocDialogShow: false // 公海分配操作提示框
-    }
-  },
-  watch: {},
   props: {
     title: {
       type: String,
@@ -173,6 +164,35 @@ export default {
       type: Boolean,
       default: false
     }
+  },
+  data() {
+    return {
+      sceneTypes: [
+        { type: 'enter', name: '我负责的' },
+        { type: 'out', name: '我' }
+      ],
+      sceneType: null,
+      showScene: false, // 场景操作
+      showFilter: false, // 控制筛选框
+      fieldList: [],
+      filterObj: { form: [] }, // 筛选确定数据
+
+      sceneData: { id: '', bydata: '', name: '' },
+      showSceneSet: false, // 展示场景设置
+      showSceneCreate: false, // 展示场景添加
+      sceneFilterObj: { form: [] }, // 筛选确定数据
+
+      /** 勾选操作数据 */
+      selectionList: [],
+      transferDialogShow: false,
+      teamsDialogShow: false, // 团队操作提示框
+      teamsTitle: '', // 团队操作标题名
+      allocDialogShow: false, // 公海分配操作提示框
+      dealStatusShow: false // 成交状态修改框
+    }
+  },
+  computed: {
+    ...mapGetters(['crm', 'CRMConfig'])
   },
   mounted() {},
   methods: {
@@ -212,7 +232,7 @@ export default {
       }
       this.$emit('filter', form.obj)
     },
-    //删除
+    // 删除
     handleDeleteField(data) {
       this.filterObj = data.obj
       this.$emit('filter', this.filterObj.obj)
@@ -220,8 +240,7 @@ export default {
     // 场景操作
     /** 选择了场景 */
     sceneSelect(data) {
-      this.sceneName = data.name
-      this.sceneID = data.id
+      this.sceneData = data
       this.$emit('scene', data)
     },
     sceneHandle(data) {
@@ -252,45 +271,14 @@ export default {
         // 转移
         this.transferDialogShow = true
       } else if (type == 'export') {
-        var params = { scene_id: this.scene_id }
-        var request
-        if (this.crmType == 'customer') {
-          request = crmCustomerExcelExport
-          params.customer_id = this.selectionList.map(function(
-            item,
-            index,
-            array
-          ) {
-            return item.customer_id
-          })
-        } else if (this.crmType == 'leads') {
-          request = crmLeadsExcelExport
-          params.leads_id = this.selectionList.map(function(
-            item,
-            index,
-            array
-          ) {
-            return item.leads_id
-          })
-        }
-        request(params)
-          .then(res => {
-            var blob = new Blob([res.data], {
-              type: 'application/vnd.ms-excel;charset=utf-8'
-            })
-            var downloadElement = document.createElement('a')
-            var href = window.URL.createObjectURL(blob) //创建下载的链接
-            downloadElement.href = href
-            downloadElement.download =
-              decodeURI(
-                res.headers['content-disposition'].split('filename=')[1]
-              ) || '' //下载后文件名
-            document.body.appendChild(downloadElement)
-            downloadElement.click() //点击下载
-            document.body.removeChild(downloadElement) //下载完成移除元素
-            window.URL.revokeObjectURL(href) //释放掉blob对象
-          })
-          .catch(() => {})
+        // const params = { scene_id: this.scene_id }
+        const params = {}
+
+        params[this.crmType + '_id'] = this.selectionList.map(item => {
+          return item[this.crmType + '_id']
+        })
+        params.__export = true
+        this.$emit('exportData', params)
       } else if (
         type == 'transform' ||
         type == 'put_seas' ||
@@ -344,6 +332,9 @@ export default {
       } else if (type == 'alloc') {
         // 公海分配操作
         this.allocDialogShow = true
+      } else if (type == 'deal_status') {
+        // 客户成交状态操作
+        this.dealStatusShow = true
       }
     },
     confirmHandle(type) {
@@ -360,6 +351,7 @@ export default {
               type: 'success',
               message: res.data
             })
+            this.$emit('handle', { type: type })
           })
           .catch(() => {})
       } else if (type === 'put_seas') {
@@ -409,15 +401,20 @@ export default {
           })
           .catch(() => {})
       } else if (type === 'delete') {
-        let self = this
+        const self = this
         var ids = this.selectionList.map(function(item, index, array) {
           return item[self.crmType + '_id']
         })
         let request
+        // 是否客户池
+        let isSeas = 0
         if (this.crmType == 'leads') {
           request = crmLeadsDelete
         } else if (this.crmType == 'customer') {
           request = crmCustomerDelete
+          if (this.isSeas === true) {
+            isSeas = 1
+          }
         } else if (this.crmType == 'contacts') {
           request = crmContactsDelete
         } else if (this.crmType == 'business') {
@@ -426,9 +423,12 @@ export default {
           request = crmContractDelete
         } else if (this.crmType == 'receivables') {
           request = crmReceivablesDelete
+        } else if (this.crmType == 'product') {
+          request = crmProductDelete
         }
         request({
-          id: ids
+          id: ids,
+          isSeas
         })
           .then(res => {
             this.$message({
@@ -458,7 +458,7 @@ export default {
     },
     /** 获取展示items */
     getSelectionHandleItemsInfo() {
-      let handleInfos = {
+      const handleInfos = {
         transfer: {
           name: '转移',
           type: 'transfer',
@@ -523,6 +523,11 @@ export default {
           name: '下架',
           type: 'disable',
           icon: require('@/assets/img/selection_disable.png')
+        },
+        deal_status: {
+          name: '更改成交状态',
+          type: 'deal_status',
+          icon: require('@/assets/img/selection_deal_status.png')
         }
       }
       if (this.crmType == 'leads') {
@@ -534,11 +539,17 @@ export default {
         ])
       } else if (this.crmType == 'customer') {
         if (this.isSeas) {
-          return this.forSelectionHandleItems(handleInfos, ['alloc', 'get'])
+          return this.forSelectionHandleItems(handleInfos, [
+            'alloc',
+            'get',
+            'export',
+            'delete'
+          ])
         } else {
           return this.forSelectionHandleItems(handleInfos, [
             'transfer',
             'export',
+            'deal_status',
             'put_seas',
             'delete',
             'lock',
@@ -548,17 +559,23 @@ export default {
           ])
         }
       } else if (this.crmType == 'contacts') {
-        return this.forSelectionHandleItems(handleInfos, ['transfer', 'delete'])
+        return this.forSelectionHandleItems(handleInfos, [
+          'transfer',
+          'export',
+          'delete'
+        ])
       } else if (this.crmType == 'business') {
         return this.forSelectionHandleItems(handleInfos, [
           'transfer',
           'delete',
+          'export',
           'add_user',
           'delete_user'
         ])
       } else if (this.crmType == 'contract') {
         return this.forSelectionHandleItems(handleInfos, [
           'transfer',
+          'export',
           'delete',
           'add_user',
           'delete_user'
@@ -566,23 +583,38 @@ export default {
       } else if (this.crmType == 'receivables') {
         return this.forSelectionHandleItems(handleInfos, ['delete'])
       } else if (this.crmType == 'product') {
-        return this.forSelectionHandleItems(handleInfos, ['start', 'disable'])
+        return this.forSelectionHandleItems(handleInfos, [
+          'export',
+          'start',
+          'disable',
+          'delete'
+        ])
       }
     },
     forSelectionHandleItems(handleInfos, array) {
       var tempsHandles = []
       for (let index = 0; index < array.length; index++) {
-        tempsHandles.push(handleInfos[array[index]])
+        const type = array[index]
+        if (this.whetherTypeShowByPermision(type)) {
+          tempsHandles.push(handleInfos[type])
+        }
       }
       return tempsHandles
     },
     // 判断是否展示
-    whetherTypeShowByPermision: function(type) {
+    whetherTypeShowByPermision(type) {
       if (type == 'transfer') {
-        return this.crm[this.crmType].transfer
+        return this.sceneData.bydata == 'is_transform'
+          ? false
+          : this.crm[this.crmType].transfer
       } else if (type == 'transform') {
-        return this.crm[this.crmType].transform
+        return this.sceneData.bydata == 'is_transform'
+          ? false
+          : this.crm[this.crmType].transform
       } else if (type == 'export') {
+        if (this.isSeas) {
+          return this.crm[this.crmType].poolexcelexport
+        }
         return this.crm[this.crmType].excelexport
       } else if (type == 'delete') {
         return this.crm[this.crmType].delete
@@ -591,7 +623,7 @@ export default {
         return this.crm[this.crmType].putinpool
       } else if (type == 'lock' || type == 'unlock') {
         // 锁定解锁(客户)
-        return this.crm[this.crmType].lock
+        return this.crm[this.crmType].lock && this.CRMConfig.config == 1
       } else if (type == 'add_user' || type == 'delete_user') {
         // 添加 移除团队成员
         return this.crm[this.crmType].teamsave
@@ -604,6 +636,9 @@ export default {
       } else if (type == 'start' || type == 'disable') {
         // 上架 下架(产品)
         return this.crm[this.crmType].status
+      } else if (type == 'deal_status') {
+        // 客户状态修改
+        return this.crm[this.crmType].deal_status
       }
 
       return true
@@ -673,9 +708,12 @@ export default {
 }
 
 .selection-items-box {
+  overflow-x: auto;
+  overflow-y: hidden;
   .selection-item {
     width: auto;
     padding: 15px;
+    flex-shrink: 0;
     .selection-item-icon {
       display: block;
       margin-right: 5px;

@@ -1,54 +1,77 @@
 <template>
   <div style="position: relative;">
     <flexbox class="t-section">
-      <img class="t-img"
-           :src="crmIcon" />
-      <div class="t-name">{{name}}</div>
-      <el-button v-if="showTransfer"
-                 class="head-handle-button"
-                 @click.native="handleTypeClick('transfer')"
-                 type="primary">转移</el-button>
-      <el-button v-if="showEdit"
-                 class="head-handle-button"
-                 @click.native="handleTypeClick('edit')"
-                 type="primary">编辑</el-button>
-      <el-dropdown trigger="click"
-                   @command="handleTypeClick">
-        <flexbox class="t-more">
+      <img
+        :src="crmIcon"
+        class="t-img" >
+      <div class="t-name">{{ name }}</div>
+      <el-button
+        v-if="showCancel"
+        class="head-handle-button"
+        type="primary"
+        @click.native="handleTypeClick('cancel')">作废</el-button>
+      <el-button
+        v-if="showTransfer"
+        class="head-handle-button"
+        type="primary"
+        @click.native="handleTypeClick('transfer')">转移</el-button>
+      <el-button
+        v-if="showEdit"
+        class="head-handle-button"
+        type="primary"
+        @click.native="handleTypeClick('edit')">编辑</el-button>
+      <el-dropdown
+        v-if="moreTypes.length > 0"
+        trigger="click"
+        @command="handleTypeClick">
+        <flexbox
+          v-if="moreTypes.length > 0"
+          class="t-more">
           <div>更多</div>
-          <i class="el-icon-arrow-down el-icon--right"
-             style="color:#ccc;"></i>
+          <i
+            class="el-icon-arrow-down el-icon--right"
+            style="color:#ccc;"/>
         </flexbox>
         <el-dropdown-menu slot="dropdown">
-          <el-dropdown-item v-for="(item, index) in moreTypes"
-                            :key="index"
-                            v-if="whetherTypeShowByPermision(item.type)"
-                            :command="item.type">{{item.name}}</el-dropdown-item>
+          <el-dropdown-item
+            v-for="(item, index) in moreTypes"
+            :key="index"
+            :command="item.type">{{ item.name }}</el-dropdown-item>
         </el-dropdown-menu>
       </el-dropdown>
-      <img @click="hideView"
-           class="t-close"
-           src="@/assets/img/task_close.png" />
+      <img
+        class="t-close"
+        src="@/assets/img/task_close.png"
+        @click="hideView" >
     </flexbox>
-    <flexbox class="h-section"
-             align="stretch">
-      <flexbox-item class="h-item"
-                    span="240"
-                    v-for="(item, index) in headDetails"
-                    :key="index">
-        <div class="h-title">{{item.title}}</div>
-        <div class="h-value">{{item.value}}</div>
+    <flexbox
+      class="h-section"
+      align="stretch">
+      <flexbox-item
+        v-for="(item, index) in headDetails"
+        :key="index"
+        class="h-item"
+        span="240">
+        <div class="h-title">{{ item.title }}</div>
+        <div class="h-value">{{ item.value }}</div>
       </flexbox-item>
     </flexbox>
-    <slot></slot>
-    <transfer-handle :crmType="crmType"
-                     :selectionList="[detail]"
-                     @handle="handleCallBack"
-                     :dialogVisible.sync="transferDialogShow"></transfer-handle>
-    <alloc-handle :crmType="crmType"
-                  :selectionList="[detail]"
-                  @handle="handleCallBack"
-                  :dialogVisible.sync="allocDialogShow"></alloc-handle>
+    <slot/>
+    <transfer-handle
+      :crm-type="crmType"
+      :selection-list="[detail]"
+      :dialog-visible.sync="transferDialogShow"
+      @handle="handleCallBack"/>
+    <alloc-handle
+      :crm-type="crmType"
+      :selection-list="[detail]"
+      :dialog-visible.sync="allocDialogShow"
+      @handle="handleCallBack"/>
+    <deal-status-handle
+      :crm-type="crmType"
+      :selection-list="[detail]"
+      :visible.sync="dealStatusShow"
+      @handle="handleCallBack"/>
   </div>
 </template>
 <script type="text/javascript">
@@ -65,62 +88,21 @@ import {
 } from '@/api/customermanagement/customer'
 import { crmContactsDelete } from '@/api/customermanagement/contacts'
 import { crmBusinessDelete } from '@/api/customermanagement/business'
-import { crmContractDelete } from '@/api/customermanagement/contract'
+import { crmContractDelete, crmContractCancel } from '@/api/customermanagement/contract'
 import { crmReceivablesDelete } from '@/api/customermanagement/money'
 import { crmProductStatus } from '@/api/customermanagement/product'
 import TransferHandle from './selectionHandle/TransferHandle' // 转移
 import AllocHandle from './selectionHandle/AllocHandle' // 公海分配操作
+import DealStatusHandle from './selectionHandle/DealStatusHandle' // 客户状态修改操作
 
 export default {
-  name: 'c-r-m-detail-head',
+  name: 'CRMDetailHead',
   components: {
     TransferHandle,
-    AllocHandle
+    AllocHandle,
+    DealStatusHandle
   },
-  computed: {
-    ...mapGetters(['crm']),
-    crmIcon() {
-      if (this.crmType === 'customer') {
-        return require('@/assets/img/customer_detail.png')
-      } else if (this.crmType === 'leads') {
-        return require('@/assets/img/clue_detail.png')
-      } else if (this.crmType === 'business') {
-        return require('@/assets/img/business_detail.png')
-      } else if (this.crmType === 'contacts') {
-        return require('@/assets/img/contacts_detail.png')
-      } else if (this.crmType === 'contract') {
-        return require('@/assets/img/contract_detail.png')
-      } else if (this.crmType === 'receivables') {
-        return require('@/assets/img/money_detail.png')
-      } else if (this.crmType === 'product') {
-        return require('@/assets/img/product_detail.png')
-      }
-      return ''
-    },
-    name() {
-      if (this.crmType === 'receivables') {
-        return this.detail.number
-      }
-      return this.detail.name
-    },
-    // 展示转移
-    showTransfer() {
-      if (this.crmType === 'receivables' || this.crmType === 'product') {
-        return false
-      }
-      return this.crm[this.crmType].transfer
-    },
-    showEdit() {
-      return this.isSeas ? false : this.crm[this.crmType].update
-    }
-  },
-  data() {
-    return {
-      moreTypes: [], // 更多操作
-      transferDialogShow: false, // 转移操作
-      allocDialogShow: false // 公海分配操作提示框
-    }
-  },
+
   props: {
     /** 模块ID */
     id: [String, Number],
@@ -148,6 +130,73 @@ export default {
       }
     }
   },
+  data() {
+    return {
+      moreTypes: [], // 更多操作
+      transferDialogShow: false, // 转移操作
+      allocDialogShow: false, // 公海分配操作提示框
+      dealStatusShow: false // 成交状态修改框
+    }
+  },
+  computed: {
+    ...mapGetters(['crm', 'CRMConfig']),
+    crmIcon() {
+      if (this.crmType === 'customer') {
+        return require('@/assets/img/customer_detail.png')
+      } else if (this.crmType === 'leads') {
+        return require('@/assets/img/clue_detail.png')
+      } else if (this.crmType === 'business') {
+        return require('@/assets/img/business_detail.png')
+      } else if (this.crmType === 'contacts') {
+        return require('@/assets/img/contacts_detail.png')
+      } else if (this.crmType === 'contract') {
+        return require('@/assets/img/contract_detail.png')
+      } else if (this.crmType === 'receivables') {
+        return require('@/assets/img/money_detail.png')
+      } else if (this.crmType === 'product') {
+        return require('@/assets/img/product_detail.png')
+      }
+      return ''
+    },
+    name() {
+      if (this.crmType === 'receivables') {
+        return this.detail.number
+      }
+      return this.detail.name
+    },
+    // 展示转移
+    showTransfer() {
+      if (
+        this.crmType === 'receivables' ||
+        this.crmType === 'product' ||
+        this.isSeas
+      ) {
+        return false
+      }
+      return this.crm[this.crmType].transfer
+    },
+    showEdit() {
+      return this.isSeas ? false : this.crm[this.crmType].update
+    },
+    // 展示作废
+    showCancel() {
+      if (this.crmType === 'contract') {
+        if (this.crm.contract.cancel) {
+          if (this.detail.check_status === 2) {
+            return true
+          }
+          return false
+        }
+        return false
+      }
+      return false
+    }
+  },
+  watch: {
+    isSeas() {
+      this.moreTypes = this.getSelectionHandleItemsInfo()
+    }
+  },
   mounted() {
     this.moreTypes = this.getSelectionHandleItemsInfo()
   },
@@ -168,7 +217,8 @@ export default {
         type == 'unlock' ||
         type == 'start' ||
         type == 'disable' ||
-        type == 'get'
+        type == 'get' ||
+        type == 'cancel'
       ) {
         var message = ''
         if (type == 'transform') {
@@ -187,6 +237,11 @@ export default {
           message = '确定要下架这些产品吗?'
         } else if (type == 'get') {
           message = '确定要领取该客户吗?'
+        } else if (type == 'cancel') {
+          message = '确定要作废此合同吗?'
+          if (this.detail.receivablesDataCount) {
+            message = '合同下有相关回款,确定要作废吗?'
+          }
         }
         this.$confirm(message, '提示', {
           confirmButtonText: '确定',
@@ -205,6 +260,9 @@ export default {
       } else if (type == 'alloc') {
         // 公海分配操作
         this.allocDialogShow = true
+      } else if (type == 'deal_status') {
+        // 客户成交状态操作
+        this.dealStatusShow = true
       }
     },
     confirmHandle(type) {
@@ -245,6 +303,13 @@ export default {
             this.$emit('handle', { type: type })
           })
           .catch(() => {})
+      } else if (type === 'cancel') {
+        crmContractCancel({
+          contract_id: this.id
+        }).then(res => {
+          this.$message.success(res.data)
+          this.$emit('handle', { type })
+        }).catch(() => {})
       } else if (type === 'start' || type === 'disable') {
         crmProductStatus({
           id: [this.id],
@@ -260,10 +325,14 @@ export default {
           .catch(() => {})
       } else if (type === 'delete') {
         let request
+        let isSeas = 0
         if (this.crmType == 'leads') {
           request = crmLeadsDelete
         } else if (this.crmType == 'customer') {
           request = crmCustomerDelete
+          if (this.isSeas === true) {
+            isSeas = 1
+          }
         } else if (this.crmType == 'contacts') {
           request = crmContactsDelete
         } else if (this.crmType == 'business') {
@@ -274,7 +343,8 @@ export default {
           request = crmReceivablesDelete
         }
         request({
-          id: [this.id]
+          id: [this.id],
+          isSeas
         })
           .then(res => {
             this.$message({
@@ -310,7 +380,7 @@ export default {
     /** 更多操作 */
     /** 获取展示items */
     getSelectionHandleItemsInfo() {
-      let handleInfos = {
+      const handleInfos = {
         transfer: {
           name: '转移',
           type: 'transfer',
@@ -360,6 +430,11 @@ export default {
           name: '下架',
           type: 'disable',
           icon: require('@/assets/img/selection_disable.png')
+        },
+        deal_status: {
+          name: '更改成交状态',
+          type: 'deal_status',
+          icon: require('@/assets/img/selection_deal_status.png')
         }
       }
       if (this.crmType == 'leads') {
@@ -377,6 +452,7 @@ export default {
         } else {
           return this.forSelectionHandleItems(handleInfos, [
             'put_seas',
+            'deal_status',
             'lock',
             'unlock',
             'delete'
@@ -397,12 +473,15 @@ export default {
     forSelectionHandleItems(handleInfos, array) {
       var tempsHandles = []
       for (let index = 0; index < array.length; index++) {
-        tempsHandles.push(handleInfos[array[index]])
+        const type = array[index]
+        if (this.whetherTypeShowByPermision(type)) {
+          tempsHandles.push(handleInfos[type])
+        }
       }
       return tempsHandles
     },
     // 判断是否展示
-    whetherTypeShowByPermision: function(type) {
+    whetherTypeShowByPermision(type) {
       if (type == 'transfer') {
         return this.crm[this.crmType].transfer
       } else if (type == 'transform') {
@@ -416,7 +495,7 @@ export default {
         return this.crm[this.crmType].putinpool
       } else if (type == 'lock' || type == 'unlock') {
         // 锁定解锁(客户)
-        return this.crm[this.crmType].lock
+        return this.crm[this.crmType].lock && this.CRMConfig.config == 1
       } else if (type == 'add_user' || type == 'delete_user') {
         // 添加 移除团队成员
         return this.crm[this.crmType].teamsave
@@ -429,6 +508,9 @@ export default {
       } else if (type == 'start' || type == 'disable') {
         // 上架 下架(产品)
         return this.crm[this.crmType].status
+      } else if (type == 'deal_status') {
+        // 客户状态修改
+        return this.crm[this.crmType].deal_status
       }
 
       return true

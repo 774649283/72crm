@@ -1,16 +1,18 @@
 <template>
   <div id="app">
     <router-view class="router-view" />
-    <vue-picture-viewer :imgData="previewImgs"
-                        :select-index="previewIndex"
-                        v-if="showPreviewImg"
-                        @close-viewer="showPreviewImg=false"></vue-picture-viewer>
+    <vue-picture-viewer
+      v-if="showPreviewImg"
+      :img-data="previewImgs"
+      :select-index="previewIndex"
+      @close-viewer="showPreviewImg=false"/>
   </div>
 </template>
 
 <script>
 /** 常用图片预览创建组件 */
 import VuePictureViewer from '@/components/vuePictureViewer/index'
+import { mapGetters } from 'vuex'
 
 export default {
   name: 'App',
@@ -24,12 +26,16 @@ export default {
       previewImgs: []
     }
   },
+  computed: {
+    ...mapGetters(['activeIndex'])
+  },
   watch: {
     $route(to, from) {
-      this.showPreviewImg = false //切换页面隐藏图片预览
-      let paths = to.path.split('/')
-      if (paths.length == 3) {
-        this.$store.commit('SET_ACTIVEINDEX', paths[2])
+      this.showPreviewImg = false // 切换页面隐藏图片预览
+      if (to.meta.menuIndex) {
+        this.$store.commit('SET_ACTIVEINDEX', to.meta.menuIndex)
+      } else {
+        this.$store.commit('SET_ACTIVEINDEX', to.path)
       }
     }
   },

@@ -10,6 +10,7 @@ use think\Db;
 use app\admin\model\Common;
 use think\Request;
 use think\Validate;
+use app\crm\model\Business as CrmBusinessModel;
 
 class Business extends Common
 {
@@ -38,9 +39,17 @@ class Business extends Common
 		$search = $request['search'];
     	$user_id = $request['user_id'];
     	$scene_id = (int)$request['scene_id'];
+    	$contacts_id = $request['contacts_id'];
+		$order_field = $request['order_field'];
+    	$order_type = $request['order_type'];     	
+    	$is_excel = $request['is_excel']; //导出
 		unset($request['scene_id']);
 		unset($request['search']);
-		unset($request['user_id']);    	
+		unset($request['user_id']);
+		unset($request['contacts_id']);
+		unset($request['order_field']);	
+		unset($request['order_type']);		   	
+		unset($request['is_excel']);	
 
         $request = $this->fmtRequest( $request );
         $requestMap = $request['map'] ? : [];
@@ -58,8 +67,13 @@ class Business extends Common
 		}
 		if (isset($requestMap['type_id'])) {
 			$requestMap['type_id']['value'] = $requestMap['type_id']['type_id'];
-			if ($requestMap['type_id']['status_id']) $requestMap['type_id']['value'] = $requestMap['type_id']['status_id'];
+			if ($requestMap['type_id']['status_id']) $requestMap['status_id']['value'] = $requestMap['type_id']['status_id'];
 		}
+		if ($sceneMap['type_id']) {
+			$requestMap['type_id']['value'] = $sceneMap['type_id']['type_id'];
+			if ($sceneMap['type_id']['status_id']) $requestMap['status_id']['value'] = $sceneMap['type_id']['status_id'];
+			unset($sceneMap['type_id']);
+		}		
 		$partMap = [];
 		//优先级：普通筛选>高级筛选>场景
 		if ($sceneMap['ro_user_id'] && $sceneMap['rw_user_id']) {
@@ -72,12 +86,13 @@ class Business extends Common
 		} else {
 			$map = $requestMap ? array_merge($sceneMap, $requestMap) : $sceneMap;
 		}
-
 		//高级筛选
-		$map = where_arr($map, 'crm', 'business', 'index');	
+		$map = where_arr($map, 'crm', 'business', 'index');
 		$authMap = [];
 		if (!$partMap) {
-			$auth_user_ids = $userModel->getUserByPer('crm', 'business', 'index');
+			$a = 'index';
+			if ($is_excel) $a = 'excelExport';
+			$auth_user_ids = $userModel->getUserByPer('crm', 'business', $a);
 			if (isset($map['business.owner_user_id'])) {
 				if (!is_array($map['business.owner_user_id'][1])) {
 					$map['business.owner_user_id'][1] = [$map['business.owner_user_id'][1]];
@@ -101,13 +116,23 @@ class Business extends Common
 			    };
 		    }
 		}
+		//联系人商机
+		if ($contacts_id) {
+			$business_id = Db::name('crm_contacts_business')->where(['contacts_id' => $contacts_id])->column('business_id');
+			if ($business_id) {
+		    	$map['business.business_id'] = array('in',$business_id);
+		    }else{
+		    	$map['business.business_id'] = array('eq',-1);
+		    }
+		}		
 		//列表展示字段
-		// $indexField = $fieldModel->getIndexField('crm_business', $user_id);	
+		$indexField = $fieldModel->getIndexField('crm_business', $user_id, 1) ? : array('name');
 		$userField = $fieldModel->getFieldByFormType('crm_business', 'user'); //人员类型
 		$structureField = $fieldModel->getFieldByFormType('crm_business', 'structure');  //部门类型	
 
-		if ($request['order_type'] && $request['order_field']) {
-			$order = trim($request['order_field']).' '.trim($request['order_type']);
+		//排序
+		if ($order_type && $order_field) {
+			$order = $fieldModel->getOrderByFormtype('crm_business','business',$order_field,$order_type);
 		} else {
 			$order = 'business.update_time desc';
 		}
@@ -121,15 +146,15 @@ class Business extends Common
 				->where($map)
 				->where($partMap)
 				->where($authMap)
-        		->page($request['page'], $request['limit'])
-        		->field('business.*,customer.name as customer_name')
-        		// ->field('business_id,'.implode(',',$indexField))
-        		->order($order)
+        		->limit(($request['page']-1)*$request['limit'], $request['limit'])
+        		->field(implode(',',$indexField).',business.is_end,customer.name as customer_name')
+        		->orderRaw($order)
         		->select();	
         $dataCount = db('crm_business')
         			->alias('business')
         			->join('__CRM_CUSTOMER__ customer','business.customer_id = customer.customer_id','LEFT')
         			->where($map)->where($partMap)->where($authMap)->count('business_id');
+        $endStatus = ['1' => '赢单','2' => '输单','3' => '无效'];
         foreach ($list as $k=>$v) {
             $list[$k]['customer_id_info']['customer_id'] = $v['customer_id'];
             $list[$k]['customer_id_info']['name'] = $v['customer_name'];
@@ -143,15 +168,19 @@ class Business extends Common
         	}
         	$statusInfo = [];
         	$status_count = 0;
-        	$statusInfo = db('crm_business_status')->where('status_id',$v['status_id'])->find();
-        	if ($statusInfo['order_id'] < 99) {
-				$status_count = db('crm_business_status')->where('type_id',['eq',$v['type_id']],['eq',''],'or')->count();
+        	if (!$v['is_end']) {
+				$statusInfo = db('crm_business_status')->where('status_id',$v['status_id'])->find();
+	        	if ($statusInfo['order_id'] < 99) {
+					$status_count = db('crm_business_status')->where('type_id',['eq',$v['type_id']])->count();
+	        	}
+				//进度
+	        	$list[$k]['status_progress'] = [$statusInfo['order_id'], $status_count+1];	        	    		
+        	} else {
+        		$statusInfo['name'] = $endStatus[$v['is_end']];
         	}
-
         	$list[$k]['status_id_info'] = $statusInfo['name'];//销售阶段
         	$list[$k]['type_id_info'] = db('crm_business_type')->where('type_id',$v['type_id'])->value('name');//商机状态组 
-        	//进度
-        	$list[$k]['status_progress'] = [$statusInfo['order_id'], $status_count+1];
+        	
 			//权限
         	$roPre = $userModel->rwPre($user_id, $v['ro_user_id'], $v['rw_user_id'], 'read');
         	$rwPre = $userModel->rwPre($user_id, $v['ro_user_id'], $v['rw_user_id'], 'update');
@@ -273,7 +302,14 @@ class Business extends Common
 
 		$param['money'] = $param['money'] ? : '0.00';
 		$param['discount_rate'] = $param['discount_rate'] ? : '0.00';
-		if ($this->allowField(true)->save($param, ['business_id' => $business_id])) {
+		//商机状态改变
+		$statusInfo = db('crm_business_status')->where(['status_id' => $param['status_id']])->find();
+		if ($statusInfo['type_id']) {
+			$param['is_end'] = 0;
+		} else {
+			$param['is_end'] = $param['status_id'];
+		}
+		if ($this->update($param, ['business_id' => $business_id], true)) {
 			//产品数据处理
 	        $resProduct = $productModel->createObject('crm_business', $param, $business_id);
 			//修改记录
@@ -306,7 +342,6 @@ class Business extends Common
 		$dataInfo['type_id_info'] = db('crm_business_type')->where(['type_id' => $dataInfo['type_id']])->value('name');
 		$dataInfo['status_id_info'] = db('crm_business_status')->where(['status_id' => $dataInfo['status_id']])->value('name');
 		$dataInfo['customer_id_info'] = db('crm_customer')->where(['customer_id' => $dataInfo['customer_id']])->field('customer_id,name')->find();
-		$dataInfo['remark'] = db('crm_business_log')->where(['business_id' => $id,'is_end' => ['gt',0]])->order('create_time desc')->value('remark'); //商机状态推进结束备注
 		return $dataInfo;
    	}
 	
@@ -324,72 +359,61 @@ class Business extends Common
 	/**
      * [商机漏斗]
      * @author Michael_xu
-     * @param     [string]                   $request [查询条件]
-     * @return    [array]                    
+     * @param
+     * @return                   
      */		
 	public function getFunnel($request)
     {
-    	$userModel = new \app\admin\model\User();
-		$where = [];
-		//时间段
-		$start_time = $request['start_time'];
-		$end_time = $request['end_time'] ;
-		$create_time = [];
-		if ($start_time && $end_time) {
-			$where['create_time'] = array('between',array($start_time,$end_time));
-		}
-		$where['owner_user_id'] = array('in',$request['userIds']);
+    	$merge = $request['merge'] ? : 0;
+    	$perUserIds = $request['perUserIds'] ? : [];
+		$adminModel = new \app\admin\model\Admin();
+        $whereArr = $adminModel->getWhere($request, $merge, $perUserIds); //统计查询
+        $userIds = $whereArr['userIds'];
+        $between_time = $whereArr['between_time'];
+        $where['owner_user_id'] = array('in',$userIds);
+        $where['create_time'] = array('between',$between_time);
 
 		//商机状态组
 		$default_type_id = db('crm_business_type')->order('type_id asc')->value('type_id');
-		
 		$type_id = $request['type_id'] ? $request['type_id'] : $default_type_id;
-		
 		$statusList = db('crm_business_status')->where(['type_id' => $type_id])->select();
-		$str = getFieldArray($statusList,'status_id');
-		//$temmpp['status_id'] = ['in',$str]; 
-		//$temmpp['create_time'] = $where['create_time'];
-		//$temmpp['owner_user_id'] = $where['owner_user_id'];
-		
-		//$logList = Db::name('CrmBusinessLog')->where($temmpp)->order('business_id desc,create_time desc')->select();
-		//赢单 
+		$map = []; 
 		$map['create_time'] = $where['create_time'];
-		$map['owner_user_id'] = ['in',$request['userIds']];
-		
-		$sum_ying = Db::name('CrmBusiness')->where($map)->where('status_id=1')->sum('money');
-		//输单
-		$sum_shu = Db::name('CrmBusiness')->where($map)->where('status_id=2')->sum('money');
+		$map['owner_user_id'] = ['in',$userIds];
+
+		$sql_a = CrmBusinessModel::field([
+		                'SUM(CASE WHEN status_id = 1 THEN money ELSE 0 END) AS sum_ying',
+		                'SUM(CASE WHEN status_id = 2 THEN money ELSE 0 END) AS sum_shu'
+		            ])
+					->where($map)
+					->fetchSql()
+					->select();
+		$res_a = queryCache($sql_a, 200);
+		$sql = CrmBusinessModel::field([
+                "status_id",
+                'COUNT(*)' => 'count',
+                'SUM(`money`)' => 'sum'
+            ])
+            ->where($where)
+            ->group('status_id')
+            ->fetchSql()
+            ->select();
+        $res = queryCache($sql, 200);
+        $res = array_column($res, null, 'status_id');
+
 		$sum_money = 0;
-		$dataAry = array();
 		foreach ($statusList as $k=>$v) {
-			$where['type_id'] = $type_id;
-			$where['status_id'] = $v['status_id'];
-			$statusList[$k]['status_name'] = $v['name'];
-			$statusList[$k]['count'] = db('crm_business')->where($where)->count(); 
-			$statusList[$k]['money'] = db('crm_business')->where($where)->sum('money'); //商机金额
+			$v['count'] = $res[$v['status_id']]['count'] ? : 0;
+			$v['money'] = $res[$v['status_id']]['sum'] ? : 0;
+			$v['status_name'] = $v['name']; 
 			
-			$sum_money += $statusList[$k]['money'];
-			//$statusList[$k]['status_name'] = $v['name'];
-			//根据商机查询 商机组
-			/* if (!$logList) {
-				$statusList[$k]['count'] += 0;
-				$statusList[$k]['money'] += 0;
-			} else {
-				foreach ($logList as $key =>$value) {
-					if ($value['status_id'] == $v['status_id']) {
-						$statusList[$k]['count'] += 1; //商机数
-						$statusList[$k]['money'] += db('crm_business')->where('business_id = '.$value['business_id'])->sum('money'); //商机金额
-					} else {
-						$statusList[$k]['count'] += 0;
-						$statusList[$k]['money'] += 0;
-					}
-				}
-			} */
+			$sum_money += $v['money'];
+			$statusList[$k] = $v;
 		}
 		$data['list'] = $statusList;
-		$data['sum_ying'] = $sum_ying;
-		$data['sum_shu'] = $sum_shu;
-		$data['sum_money'] = $sum_money;
+		$data['sum_ying'] = $res_a[0]['sum_ying'] ? : 0;
+		$data['sum_shu'] = $res_a[0]['sum_shu'] ? : 0;
+		$data['sum_money'] = $sum_money ? : 0;
         return $data ? : [];
     } 
 
@@ -407,26 +431,100 @@ class Business extends Common
 	    $errorMessage = [];    	
     	foreach ($ids as $id) {
     		$businessInfo = db('crm_business')->where(['business_id' => $id])->find();
-			$data = [];
-	        $data['owner_user_id'] = $owner_user_id;
-	        $data['update_time'] = time(); 
-			if (!db('crm_business')->where(['business_id' => $id])->update($data)) {
-	            $errorMessage[] = '商机：'.$businessInfo['name'].'"转移失败，错误原因：数据出错；';
-	            continue;
-	        }	        
-	        //团队成员
+			//团队成员
 	        $teamData = [];
             $teamData['type'] = $type; //权限 1只读2读写
             $teamData['user_id'] = [$businessInfo['owner_user_id']]; //协作人
             $teamData['types'] = 'crm_business'; //类型
             $teamData['types_id'] = $id; //类型ID
             $teamData['is_del'] = ($is_remove == 1) ? 1 : '';
-            $res = $settingModel->createTeamData($teamData); 
+            $res = $settingModel->createTeamData($teamData);     		
+
+			$data = [];
+	        $data['owner_user_id'] = $owner_user_id;
+	        $data['update_time'] = time(); 
+			if (!db('crm_business')->where(['business_id' => $id])->update($data)) {
+	            $errorMessage[] = '商机：'.$businessInfo['name'].'"转移失败，错误原因：数据出错；';
+	            continue;
+	        }
     	}
     	if ($errorMessage) {
 			return $errorMessage;
     	} else {
     		return true;
     	}
-    }    	
+    }  
+
+    /**
+     * [商机统计]
+     * @param 
+     * @return                   
+     */		
+	public function getTrendql($map)
+	{
+		$prefix = config('database.prefix');
+		$sql = "SELECT
+					'{$map['type']}' AS type,
+					'{$map['start_time']}' AS start_time,
+					'{$map['end_time']}' AS end_time,
+					IFNULL(
+						(
+							SELECT
+								sum(money)
+							FROM
+								{$prefix}crm_business
+							WHERE
+								create_time BETWEEN {$map['start_time']} AND {$map['end_time']}
+							AND owner_user_id IN ({$map['owner_user_id']})
+						),
+						0
+					) AS business_money,
+					IFNULL(
+						count(business_id),
+						0
+					) AS business_num
+				FROM
+					{$prefix}crm_business
+				WHERE
+					create_time BETWEEN {$map['start_time']} AND {$map['end_time']}
+					AND owner_user_id IN ({$map['owner_user_id']})";
+		return $sql;	
+	}
+
+	/**
+     * [赢单机会转化率趋势分析]
+     * @param 
+     * @return                   
+     */		
+	public function getWinSql($map)
+	{
+		$prefix = config('database.prefix');
+		$sql = "SELECT
+					'{$map['type']}' AS type,
+					'{$map['start_time']}' AS start_time,
+					'{$map['end_time']}' AS end_time,
+					IFNULL(
+						(
+							SELECT
+								count(business_id)
+							FROM
+								{$prefix}crm_business
+							WHERE
+								create_time BETWEEN {$map['start_time']} AND {$map['end_time']}
+							AND owner_user_id IN ({$map['owner_user_id']})
+							AND is_end = 1 
+						),
+						0
+					) AS business_end,
+					IFNULL(
+						count(business_id),
+						0
+					) AS business_num
+				FROM
+					{$prefix}crm_business
+				WHERE
+					create_time BETWEEN {$map['start_time']} AND {$map['end_time']}
+					AND owner_user_id IN ({$map['owner_user_id']})";
+		return $sql;	
+	}
 }

@@ -1,12 +1,12 @@
 import {
-  asyncRouterMap,
-  constantRouterMap
+  asyncRouterMap
 } from '@/router'
+import Vue from 'vue'
 
 /**
- * 
- * @param {*} router 
- * @param {*} authInfo 
+ *
+ * @param {*} router
+ * @param {*} authInfo
  */
 function checkAuth(router, authInfo) {
   // 判断当前路由在权限数组中是否存在
@@ -16,16 +16,16 @@ function checkAuth(router, authInfo) {
       return true
     } else {
       if (metaInfo.index == 0) {
-        return authInfo[metaInfo.type] ? true : false
+        return !!authInfo[metaInfo.type]
       } else if (metaInfo.index == 1) {
         if (authInfo[metaInfo.type]) {
-          return authInfo[metaInfo.type][metaInfo.subType] ? true : false
+          return !!authInfo[metaInfo.type][metaInfo.subType]
         }
         return false
       } else {
         var typeAuth = authInfo[metaInfo.type]
         for (let index = 0; index < metaInfo.subType.length; index++) {
-          const field = metaInfo.subType[index];
+          const field = metaInfo.subType[index]
           typeAuth = typeAuth[field]
           if (typeAuth && metaInfo.subType.length - 1 == index) {
             return true
@@ -40,11 +40,11 @@ function checkAuth(router, authInfo) {
 }
 
 /**
- * 
- * @param {*} routers 
- * @param {*} authInfo 
+ *
+ * @param {*} routers
+ * @param {*} authInfo
  */
-const filterAsyncRouter = function (routers, authInfo) {
+const filterAsyncRouter = function(routers, authInfo) {
   const res = []
   routers.forEach(router => {
     const tmp = {
@@ -74,6 +74,10 @@ const permission = {
     manageRouters: {
       name: 'manager',
       children: []
+    },
+    oaRouters: {
+      name: 'oa',
+      children: []
     }
   },
   mutations: {
@@ -81,7 +85,9 @@ const permission = {
       state.addRouters = routers
       for (let index = 0; index < routers.length; index++) {
         const element = routers[index]
-        if (element.name == 'crm') {
+        if (element.name == 'oa') {
+          state.oaRouters = element
+        } else if (element.name == 'crm') {
           state.crmRouters = element
         } else if (element.name == 'bi') {
           state.biRouters = element
@@ -89,7 +95,17 @@ const permission = {
           state.manageRouters = element
         }
       }
+    },
+
+    /**
+     * 客户管理待办消息数
+     */
+    SET_CRMROUTERSNUM: (state, num) => {
+      const messageItem = state.crmRouters.children[1]
+      messageItem.meta.num = num
+      Vue.set(state.crmRouters.children, 1, messageItem)
     }
+
   },
   actions: {
     GenerateRoutes({
@@ -97,11 +113,24 @@ const permission = {
     }, data) {
       return new Promise(resolve => {
         const accessedRouters = filterAsyncRouter(asyncRouterMap, data)
+        let redirect = ''
         for (let index = 0; index < accessedRouters.length; index++) {
           const element = accessedRouters[index]
           if (element.children && element.children.length > 0) {
             element.redirect = element.path + '/' + element.children[0].path
           }
+
+          // 获取跳转
+          if (element.redirect && !redirect) {
+            redirect = element.redirect
+          }
+        }
+        if (redirect) {
+          accessedRouters.push({
+            path: '/',
+            redirect: redirect,
+            hidden: true
+          })
         }
         commit('SET_ROUTERS', accessedRouters)
         resolve()

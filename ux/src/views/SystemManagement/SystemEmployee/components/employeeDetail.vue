@@ -1,49 +1,62 @@
 <template>
-  <slide-view class="d-view"
-              :listenerIDs="['manager-main-container']"
-              :noListenerIDs="['depTable']"
-              @side-close="hideView"
-              :body-style="{padding: '10px 30px', height: '100%'}">
-    <flexbox orient="vertical"
-             style="height: 100%;">
+  <slide-view
+    :listener-ids="['manager-main-container']"
+    :no-listener-ids="['depTable']"
+    :body-style="{padding: '10px 30px', height: '100%'}"
+    class="d-view"
+    @side-close="hideView">
+    <flexbox
+      orient="vertical"
+      style="height: 100%;">
       <flexbox class="detail-header">
-        <div class="header-name"></div>
-        <img @click="hideView"
-             class="header-close"
-             src="@/assets/img/task_close.png" />
+        <div class="header-name"/>
+        <img
+          class="header-close"
+          src="@/assets/img/task_close.png"
+          @click="hideView" >
       </flexbox>
       <div class="detail-body">
         <div class="dialog-top">
-          <img :src="data.thumb_img"
-               alt="">
-          <span>{{data.realname}}</span>
+          <img
+            :src="data.thumb_img"
+            alt="">
+          <span>{{ data.realname }}</span>
           <div class="dialog-btn-group">
-            <el-button type="primary"
-                       size="medium"
-                       @click="editBtn"> 编 辑 </el-button>
-            <el-dropdown trigger="click"
-                         @command="handleCommand">
+            <el-button
+              v-if="userUpdateAuth"
+              type="primary"
+              size="medium"
+              @click="editBtn"> 编 辑 </el-button>
+            <el-dropdown
+              v-if="userUpdateAuth || userEnablesAuth"
+              trigger="click"
+              @command="handleCommand">
               <el-button size="medium">
-                更 多<i class="el-icon-arrow-down el-icon--right"></i>
+                更 多<i class="el-icon-arrow-down el-icon--right"/>
               </el-button>
               <el-dropdown-menu slot="dropdown">
-                <el-dropdown-item command="reset">重置密码</el-dropdown-item>
-                <el-dropdown-item command="status">{{data.status === 0 ? '激 活' : '禁 用'}}</el-dropdown-item>
+                <el-dropdown-item
+                  v-if="userUpdateAuth"
+                  command="reset">重置密码</el-dropdown-item>
+                <el-dropdown-item
+                  v-if="userEnablesAuth"
+                  command="status">{{ data.status === 0 ? '激 活' : '禁 用' }}</el-dropdown-item>
               </el-dropdown-menu>
             </el-dropdown>
           </div>
           <div class="dialog-remark">
-            <p>账号状态：{{{'0':'禁用','1':'激活','2':'未激活' }[data.status]}}</p>
-            <p>创建时间：{{data.create_time | filterTimestampToFormatTime('YYYY-MM-DD')}}</p>
+            <p>账号状态：{{ {'0':'禁用','1':'激活','2':'未激活' }[data.status] }}</p>
+            <p>创建时间：{{ data.create_time | filterTimestampToFormatTime('YYYY-MM-DD') }}</p>
           </div>
         </div>
         <div class="dialog-content">
-          <flexbox v-for="(item, index) in detailList"
-                   :key="index"
-                   class="content-items"
-                   align="stretch">
-            <div class="content-items-name">{{item.value}}</div>
-            <div class="content-items-value">{{data|formatedInfo(item.field)}}</div>
+          <flexbox
+            v-for="(item, index) in detailList"
+            :key="index"
+            class="content-items"
+            align="stretch">
+            <div class="content-items-name">{{ item.value }}</div>
+            <div class="content-items-value">{{ data|formatedInfo(item.field) }}</div>
           </flexbox>
         </div>
       </div>
@@ -53,16 +66,13 @@
 
 <script>
 import SlideView from '@/components/SlideView'
+import { mapGetters } from 'vuex'
 
 export default {
   /** 审批详情 */
-  name: 'employee-detail',
+  name: 'EmployeeDetail',
   components: {
     SlideView
-  },
-  props: {
-    // 详情信息
-    data: Object
   },
   filters: {
     formatedInfo(data, field) {
@@ -72,7 +82,10 @@ export default {
       return data[field]
     }
   },
-  watch: {},
+  props: {
+    // 详情信息
+    data: Object
+  },
   data() {
     return {
       detailList: [
@@ -87,7 +100,19 @@ export default {
       ]
     }
   },
-  computed: {},
+  computed: {
+    ...mapGetters(['admin']),
+    // 员工编辑操作权限
+    userUpdateAuth() {
+      return this.admin && this.admin.users && this.admin.users.update
+    },
+    // 员工禁用启用权限
+    userEnablesAuth() {
+      return this.admin && this.admin.users && this.admin.users.enables
+    }
+  },
+  watch: {},
+
   mounted() {},
   methods: {
     editBtn() {
@@ -96,7 +121,7 @@ export default {
     handleCommand(command) {
       this.$emit('command', command)
     },
-    //** 点击关闭按钮隐藏视图 */
+    //* * 点击关闭按钮隐藏视图 */
     hideView() {
       this.$emit('hide-view')
     }

@@ -1,78 +1,65 @@
 <template>
-  <div class="content"
-       v-loading="loading">
+  <div
+    v-loading="loading"
+    class="content">
     <div class="select-box">
       <div class="select-group">
         <label>审核状态</label>
-        <el-select v-model="check_status"
-                   size="small"
-                   placeholder="请选择"
-                   @change="searchBtn">
-          <el-option v-for="item in statusOptions"
-                     :key="item.key"
-                     :label="item.label"
-                     :value="item.key">
-          </el-option>
+        <el-select
+          v-model="check_status"
+          size="small"
+          placeholder="请选择"
+          @change="searchBtn">
+          <el-option
+            v-for="item in statusOptions"
+            :key="item.key"
+            :label="item.label"
+            :value="item.key"/>
         </el-select>
       </div>
       <div class="select-group">
         <label>发起时间</label>
-        <el-date-picker v-model="between_time"
-                        type="daterange"
-                        style="padding: 0px 10px;width: 250px;"
-                        range-separator="-"
-                        value-format="yyyy-MM-dd"
-                        start-placeholder="开始日期"
-                        end-placeholder="结束日期"
-                        @change="searchBtn">
-        </el-date-picker>
+        <el-date-picker
+          v-model="between_time"
+          type="daterange"
+          style="padding: 0px 10px;width: 250px;"
+          range-separator="-"
+          value-format="yyyy-MM-dd"
+          start-placeholder="开始日期"
+          end-placeholder="结束日期"
+          @change="searchBtn"/>
       </div>
     </div>
-    <div class="list-box"
-         :id="'examine-list-box' + this.by">
-      <examine-cell v-for="(item, index) in list"
-                    :key="index"
-                    :data="item"
-                    @on-handle="examineCellHandle"></examine-cell>
-      <p class="load">
-        <el-button type="text"
-                   :loading="loadMoreLoading">{{loadMoreLoading ? '加载更多' : '没有更多了'}}</el-button>
+    <examine-section
+      :id="'examine-list-box' + by"
+      :list="list"
+      class="list-box"
+      @handle="searchBtn">
+      <p
+        slot="load"
+        class="load">
+        <el-button
+          :loading="loadMoreLoading"
+          type="text">{{ loadMoreLoading ? '加载更多' : '没有更多了' }}</el-button>
       </p>
-    </div>
-    <examine-detail v-if="showDview"
-                    :id="rowID"
-                    class="d-view"
-                    @on-examine-handle="searchBtn"
-                    @hide-view="showDview=false">
-    </examine-detail>
-    <c-r-m-all-detail :visible.sync="showRelatedDetail"
-                      :crmType="relatedCRMType"
-                      :listenerIDs="['workbench-main-container']"
-                      :noListenerIDs="['examine-list-box']"
-                      :id="relatedID"></c-r-m-all-detail>
-    <examine-handle :show="showExamineHandle"
-                    @close="showExamineHandle = false"
-                    @save="searchBtn"
-                    :id="rowID"
-                    examineType="oa_examine"
-                    status="2"></examine-handle>
+    </examine-section>
   </div>
 </template>
 
 <script>
-import { oaExamineIndex, oaExamineDelete } from '@/api/oamanagement/examine'
+import { oaExamineIndex } from '@/api/oamanagement/examine'
 import { formatTimeToTimestamp } from '@/utils'
-import ExamineCell from './examineCell'
-import ExamineDetail from './examineDetail'
-import CRMAllDetail from '@/views/customermanagement/components/CRMAllDetail'
-import ExamineHandle from '@/components/Examine/ExamineHandle' // 审批操作理由
+import ExamineSection from './examineSection'
 
 export default {
   components: {
-    ExamineCell,
-    ExamineDetail,
-    CRMAllDetail,
-    ExamineHandle
+    ExamineSection
+  },
+  props: {
+    // 类型 my我发起的,examine我审批的
+    by: String,
+    // 审批类型ID
+    category_id: [String, Number]
   },
   data() {
     return {
@@ -83,30 +70,8 @@ export default {
       list: [],
       // 判断是否发请求
       isPost: false,
-      page: 1,
-      /** 控制详情展示 */
-      rowID: '', // 行信息
-      showDview: false,
-      // 相关详情的查看
-      relatedID: '',
-      relatedCRMType: '',
-      showRelatedDetail: false,
-      // 撤回操作
-      showExamineHandle: false
+      page: 1
     }
-  },
-  watch: {
-    category_id: function(params) {
-      this.page = 1
-      this.list = []
-      this.getList()
-    }
-  },
-  props: {
-    // 类型 my我发起的,examine我审批的
-    by: String,
-    // 审批类型ID
-    category_id: [String, Number]
   },
   computed: {
     statusOptions() {
@@ -127,25 +92,26 @@ export default {
       }
     }
   },
+  watch: {
+    category_id: function(params) {
+      this.page = 1
+      this.list = []
+      this.getList()
+    }
+  },
   mounted() {
     // 分批次加载
-    let self = this
-    let item = document.getElementById('examine-list-box' + this.by)
-    item.onscroll = function() {
-      let scrollTop = item.scrollTop
-      let windowHeight = item.clientHeight
-      let scrollHeight = item.scrollHeight //滚动条到底部的条件
-
-      if (
-        scrollTop + windowHeight == scrollHeight &&
-        self.loadMoreLoading == true
-      ) {
-        if (!self.isPost) {
-          self.isPost = true
-          self.page++
-          self.getList()
+    const dom = document.getElementById('examine-list-box' + this.by)
+    dom.onscroll = () => {
+      const scrollOff = dom.scrollTop + dom.clientHeight - dom.scrollHeight
+      // 滚动条到底部的条件
+      if (Math.abs(scrollOff) < 10 && this.loadMoreLoading == true) {
+        if (!this.isPost) {
+          this.isPost = true
+          this.page++
+          this.getList()
         } else {
-          self.loadMoreLoading = false
+          this.loadMoreLoading = false
         }
       }
     }
@@ -165,16 +131,22 @@ export default {
         by = this.by
         check_status = this.check_status
       }
-      oaExamineIndex({
+
+      const params = {
         by: by,
         limit: 15,
         category_id: this.category_id,
         check_status: check_status,
-        between_time: this.between_time.map(function(item, index, array) {
-          return formatTimeToTimestamp(item)
-        }),
         page: this.page
-      })
+      }
+
+      if (this.between_time && this.between_time.length > 0) {
+        params.between_time = this.between_time.map(item => {
+          return formatTimeToTimestamp(item)
+        })
+      }
+
+      oaExamineIndex(params)
         .then(res => {
           this.list = this.list.concat(res.data.list)
           if (res.data.list.length < 15) {
@@ -201,50 +173,6 @@ export default {
       this.check_status = 'all'
       this.between_time = []
       this.$emit('reset')
-    },
-    examineCellHandle(data) {
-      // 编辑
-      if (data.type == 'edit') {
-        this.$emit('edit', data.data.item)
-        // 删除
-      } else if (data.type == 'delete') {
-        this.$confirm('确定删除?', '提示', {
-          confirmButtonText: '确定',
-          cancelButtonText: '取消',
-          type: 'warning'
-        })
-          .then(() => {
-            oaExamineDelete({
-              id: data.data.item.examine_id
-            }).then(res => {
-              this.searchBtn()
-              this.$message({
-                type: 'success',
-                message: '删除成功!'
-              })
-            })
-          })
-          .catch(() => {
-            this.$message({
-              type: 'info',
-              message: '已取消删除'
-            })
-          })
-        // 撤回
-      } else if (data.type == 'withdraw') {
-        this.rowID = data.data.item.examine_id
-        this.showExamineHandle = true
-        // 详情
-      } else if (data.type == 'view') {
-        this.showRelatedDetail = false
-        this.rowID = data.data.item.examine_id
-        this.showDview = true
-      } else if (data.type == 'related-detail') {
-        this.showDview = false
-        this.relatedID = data.data.item[data.data.type + '_id']
-        this.relatedCRMType = data.data.type
-        this.showRelatedDetail = true
-      }
     }
   }
 }
@@ -292,13 +220,5 @@ export default {
     color: #ccc;
     cursor: auto;
   }
-}
-
-.d-view {
-  position: fixed;
-  width: 926px;
-  top: 60px;
-  bottom: 0px;
-  right: 0px;
 }
 </style>
